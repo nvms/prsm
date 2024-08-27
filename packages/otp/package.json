@@ -1,0 +1,33 @@
+{
+  "name": "@prsm/otp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./dist/index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest",
+    "release": "bumpp package.json && npm publish --access public"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "hi-base32": "^0.5.1"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "bumpp": "^9.5.2",
+    "qrcode": "^1.5.4",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

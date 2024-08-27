@@ -1,0 +1,23 @@
+{
+  "printWidth": 80,
+  "overrides": [
+    {
+      "files": "packages/otp/src/index.test.ts",
+      "options": {
+        "printWidth": 250
+      }
+    },
+    {
+      "files": "packages/otp/src/index.ts",
+      "options": {
+        "printWidth": 250
+      }
+    },
+    {
+      "files": "packages/match/src/index.ts",
+      "options": {
+        "printWidth": 250
+      }
+    }
+  ]
+}

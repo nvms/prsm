@@ -1,0 +1,27 @@
+{
+  "name": "@prsm/hash",
+  "version": "1.0.2",
+  "author": "nvms",
+  "main": "./dist/index.js",
+  "devDependencies": {
+    "@types/node": "^22.4.1",
+    "bumpp": "^9.1.1",
+    "tsup": "^8.2.4",
+    "typescript": "^5.1.6"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "description": "",
+  "keywords": [],
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsup",
+    "release": "bumpp package.json && npm publish --access public"
+  },
+  "type": "module"
+}
