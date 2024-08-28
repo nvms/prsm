@@ -3,6 +3,7 @@
   "version": "1.2.0",
   "author": "",
   "main": "./dist/index.js",
+  "types": "module",
   "devDependencies": {
     "@types/ws": "^8.5.12",
     "bumpp": "^9.5.1",

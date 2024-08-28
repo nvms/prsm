@@ -7,5 +7,5 @@
     "moduleResolution": "NodeNext",
     "target": "ESNext"
   },
-  // "include": ["src", "express-session-auth.d.ts"]
+  "include": ["src", "express-session-auth.d.ts"]
 }
