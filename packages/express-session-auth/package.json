@@ -1,11 +1,12 @@
 {
   "name": "@prsm/express-session-auth",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "",
   "main": "./dist/index.js",
   "type": "module",
   "types": "./dist/index.d.ts",
   "files": [
+    "src",
     "dist",
     "express-session-auth.d.ts"
   ],
