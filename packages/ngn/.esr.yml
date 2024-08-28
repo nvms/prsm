@@ -1,0 +1,9 @@
+platform: browser
+bundle: true
+outdir: public
+format: esm
+sourcemap: true
+
+serve:
+  html: public/index.html
+  port: 1234
