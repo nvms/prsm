@@ -97,6 +97,11 @@ export class KeepAliveClient extends EventTarget {
     }, this.options.pingTimeout + this.options.maxLatency);
   }
 
+  /**
+   * Disconnect the client from the server.
+   * The client will not attempt to reconnect.
+   * To reconnect, create a new KeepAliveClient.
+   */
   disconnect() {
     this.options.shouldReconnect = false;
 
@@ -107,7 +112,7 @@ export class KeepAliveClient extends EventTarget {
     clearTimeout(this.pingTimeout);
   }
 
-  async reconnect() {
+  private async reconnect() {
     if (this.isReconnecting) {
       return;
     }
