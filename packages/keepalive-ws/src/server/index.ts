@@ -130,7 +130,9 @@ export type KeepAliveServerOptions = ServerOptions & {
 export class KeepAliveServer extends WebSocketServer {
   connections: { [id: string]: Connection } = {};
   remoteAddressToConnections: { [address: string]: Connection[] } = {};
-  commands: { [command: string]: (context: WSContext<any>) => Promise<void> } = {};
+  commands: {
+    [command: string]: (context: WSContext<any>) => Promise<any> | any;
+  } = {};
   globalMiddlewares: SocketMiddleware[] = [];
   middlewares: { [key: string]: SocketMiddleware[] } = {};
   rooms: { [roomName: string]: Set<string> } = {};
@@ -330,9 +332,9 @@ export class KeepAliveServer extends WebSocketServer {
     this.rooms[roomName] = new Set();
   }
 
-  registerCommand(
+  registerCommand<T>(
     command: string,
-    callback: SocketMiddleware,
+    callback: (context: WSContext<any>) => Promise<T> | T,
     middlewares: SocketMiddleware[] = [],
   ) {
     this.commands[command] = callback;
