@@ -1,6 +1,6 @@
 {
   "name": "@prsm/express-keepalive-ws",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "author": "",
   "main": "./dist/index.js",
   "devDependencies": {
@@ -9,6 +9,7 @@
     "tsup": "^8.2.4",
     "typescript": "^5.5.4"
   },
+  "typings": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -26,7 +27,6 @@
   "type": "module",
   "types": "module",
   "dependencies": {
-    "@prsm/express-keepalive-ws": "^1.2.2",
     "@prsm/keepalive-ws": "^0.3.6"
   }
 }
