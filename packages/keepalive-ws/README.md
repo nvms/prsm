@@ -25,15 +25,16 @@ const ws = new KeepAliveServer({
 
 ws.registerCommand(
   "authenticate",
-  async (c: WSContext) => {
+  async (c: WSContext<{ token: string >}) => {
+    const { token } = c.payload;
     // use c.payload to authenticate c.connection
-    return { ok: true, token: "..." };
+    return { ok: true, token };
   },
 );
 
 ws.registerCommand(
   "throws",
-  async (c: WSContext) => {
+  async (c: WSContext<unknown>) => {
     throw new Error("oops");
   },
 );
