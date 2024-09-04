@@ -2,8 +2,7 @@ import {
   KeepAliveServer,
   type KeepAliveServerOptions,
 } from "@prsm/keepalive-ws/server";
-import { type Server } from "node:http";
-import { STATUS_CODES } from "node:http";
+import { STATUS_CODES, type Server } from "node:http";
 
 const createWsMiddleware = (
   server: Server,
@@ -62,4 +61,7 @@ const createWsMiddleware = (
 };
 
 export default createWsMiddleware;
-export { type WSContext } from "@prsm/keepalive-ws/server";
+export {
+  type KeepAliveServer,
+  type WSContext,
+} from "@prsm/keepalive-ws/server";
