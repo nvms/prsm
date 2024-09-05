@@ -748,10 +748,6 @@ export const createAuth = async ({
 
     return new Promise<void>((resolve, reject) => {
       if (!req.session?.regenerate) {
-        console.log(
-          "COULD NOT REGENERATE SESSION WTF. req:session:",
-          req.session,
-        );
         resolve();
       }
       req.session.regenerate(async (err) => {
