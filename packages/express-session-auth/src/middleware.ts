@@ -47,6 +47,7 @@ type AuthSession = {
   rolemask: number;
   remembered: boolean;
   lastResync: Date;
+  lastRememberCheck: Date;
   forceLogout: number;
   verified: boolean;
 };
@@ -439,6 +440,7 @@ export const createAuth = async ({
   if (!datasource) {
     throw new Error("datasource is required");
   }
+
   const um = createUserManager({ req, res, datasource });
 
   const isLoggedIn = () => req.session?.auth?.loggedIn ?? false;
@@ -494,6 +496,12 @@ export const createAuth = async ({
     }
 
     const { token } = getRememberToken();
+
+    if (req.session.auth.lastRememberCheck && (Date.now() - new Date(req.session.auth.lastRememberCheck).getTime()) < 5000) {
+      return;
+    }
+
+    req.session.auth.lastRememberCheck = new Date();
 
     if (!token) {
       return;
@@ -761,6 +769,7 @@ export const createAuth = async ({
           rolemask: user.rolemask,
           remembered: remember,
           lastResync: new Date(),
+          lastRememberCheck: new Date(),
           forceLogout: user.forceLogout,
           verified: user.verified,
         };
