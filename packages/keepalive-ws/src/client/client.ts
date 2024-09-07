@@ -113,7 +113,7 @@ export class KeepAliveClient extends EventTarget {
   }
 
   private async reconnect() {
-    if (this.isReconnecting) {
+    if (!this.options.shouldReconnect || this.isReconnecting) {
       return;
     }
 

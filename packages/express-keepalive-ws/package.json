@@ -27,6 +27,6 @@
   "types": "module",
   "typings": "./dist/index.d.ts",
   "dependencies": {
-    "@prsm/keepalive-ws": "^0.3.7"
+    "@prsm/keepalive-ws": "^0.3.8"
   }
 }
