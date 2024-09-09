@@ -37,6 +37,8 @@ const squash = (number) => (Math.abs(number) >= deadzone ? number : Math.abs(num
 
 export const gamepadUpdate = () => {
   for (const pad of navigator.getGamepads()) {
+    if (!pad) continue;
+
     gamepadState[pad.index] = {
       axes: {
         0: squash(pad.axes[0]),
