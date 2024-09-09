@@ -146,22 +146,28 @@ export const createWorld = () => {
      * Fake requestAnimationFrame and cancelAnimationFrame
      * so that we can run tests for this in node.
      */
-    if (typeof window !== "undefined") {
-      raf = requestAnimationFrame;
-      craf = cancelAnimationFrame;
-    } else {
-      let now = 0;
-      raf = (cb: FrameRequestCallback): number => {
-        return setTimeout(() => {
-          now += 16.67;
-          cb(now);
-        }, 16.67) as unknown as number;
-      };
+     if (typeof window !== "undefined") {
+       let now = performance.now();
+       raf = (cb: FrameRequestCallback): number => {
+         return requestAnimationFrame((timestamp) => {
+           now = timestamp;
+           cb(now);
+         });
+       };
+       craf = cancelAnimationFrame;
+     } else {
+       let now = 0;
+       raf = (cb: FrameRequestCallback): number => {
+         return setTimeout(() => {
+           now += 16.67;
+           cb(now);
+         }, 16.67) as unknown as number;
+       };
 
-      craf = (id: number) => {
-        clearTimeout(id);
-      };
-    }
+       craf = (id: number) => {
+         clearTimeout(id);
+       };
+     }
 
     let xfps = 1;
     const xtimes = [];
