@@ -165,6 +165,8 @@ const createUserManager = ({ req, res, datasource }: ReqResDatasource) => {
    */
   const getVerified = (): number => getSessionProperty("verified");
 
+  const getUsername = () => getSessionProperty("username");
+
   /**
    * Operates on session.auth.
    * Returns the logged-in user.
@@ -405,6 +407,7 @@ const createUserManager = ({ req, res, datasource }: ReqResDatasource) => {
     getEmail,
     getStatus,
     getVerified,
+    getUsername,
     getRoleNames,
     getStatusName,
 
@@ -1068,6 +1071,7 @@ export const createAuth = async ({
     getEmail: um.getEmail,
     getStatus: um.getStatus,
     getVerified: um.getVerified,
+    getUsername: um.getUsername,
     getUser: um.getUser,
     getRoleNames: um.getRoleNames,
     getStatusName: um.getStatusName,
