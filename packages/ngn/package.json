@@ -17,14 +17,14 @@
   },
   "exports": {
     ".": {
-      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./input": {
-      "require": "./dist/index.cjs",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/packages/input/index.d.ts",
+      "import": "./dist/packages/input/index.js",
+      "require": "./dist/packages/input/index.cjs"
     }
   },
   "publishConfig": {
