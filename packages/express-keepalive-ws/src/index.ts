@@ -64,4 +64,5 @@ export default createWsMiddleware;
 export {
   type KeepAliveServer,
   type WSContext,
+  Connection,
 } from "@prsm/keepalive-ws/server";

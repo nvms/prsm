@@ -458,7 +458,7 @@ export const createAuth = async ({
    *
    * @throws {Error} When session regeneration fails.
    */
-  const resyncSession = async () => {
+  const resyncSession = async (force = false) => {
     if (!isLoggedIn()) {
       return;
     }
@@ -467,7 +467,7 @@ export const createAuth = async ({
 
     const lastResync = new Date(req.session.auth.lastResync);
 
-    if (lastResync && lastResync.getTime() > Date.now() - interval) {
+    if (!force && lastResync && lastResync.getTime() > Date.now() - interval) {
       return;
     }
 
@@ -500,7 +500,10 @@ export const createAuth = async ({
 
     const { token } = getRememberToken();
 
-    if (req.session.auth.lastRememberCheck && (Date.now() - new Date(req.session.auth.lastRememberCheck).getTime()) < 5000) {
+    if (
+      req.session.auth.lastRememberCheck &&
+      Date.now() - new Date(req.session.auth.lastRememberCheck).getTime() < 5000
+    ) {
       return;
     }
 
@@ -1039,6 +1042,7 @@ export const createAuth = async ({
 
   return {
     processRememberDirective,
+    resyncSession,
 
     forceLogoutForUser,
     forceLogoutForUserById,
