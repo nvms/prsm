@@ -319,6 +319,13 @@ export class KeepAliveServer extends WebSocketServer {
     this.rooms[roomName].delete(connection.id);
   }
 
+  removeFromAllRooms(connection: Connection | string) {
+    const connectionId = typeof connection === "string" ? connection : connection.id;
+    Object.keys(this.rooms).forEach((roomName) => {
+      this.rooms[roomName].delete(connectionId);
+    });
+  }
+
   /**
    * Returns a "room", which is simply a Set of Connection ids.
    * @param roomName
