@@ -15,7 +15,7 @@ export const ensureRequiredMiddlewares = (app: express.Application) => {
 
   for (const name of requiredMiddlewares) {
     if (!isMiddlewareUsed(app, name)) {
-      throw new Error(
+      console.warn(
         `Required middleware '${name}' not found. Please ensure it is added to your express application.`,
       );
     }
