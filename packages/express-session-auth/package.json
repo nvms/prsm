@@ -1,6 +1,6 @@
 {
   "name": "@prsm/express-session-auth",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "",
   "main": "./dist/index.js",
   "type": "module",
@@ -31,15 +31,18 @@
     "@prsm/hash": "^1.0.2",
     "@prsm/ids": "^1.1.1",
     "@prsm/ms": "^1.0.1",
+    "@prsm/otp": "file:../otp",
     "@types/express": "^4.17.21",
     "cookie-parser": "^1.4.6",
     "express": "^4.19.2",
-    "express-session": "^1.18.0"
+    "express-session": "^1.18.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.7",
     "@types/express-session": "^1.18.0",
     "@types/node": "^22.4.1",
+    "@types/qrcode": "^1.5.5",
     "bumpp": "^9.5.1",
     "tsup": "^8.2.4",
     "typescript": "^5.5.4"
