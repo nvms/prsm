@@ -12,7 +12,7 @@
     "build:packages:2d": "tsup src/packages/2d/index.ts --format cjs,esm --dts --minify --clean --out-dir dist/packages/2d",
     "test": "bun src/tests/index.ts",
     "test:watch": "nodemon --watch src --watch tests --exec \"clear && pnpm run test\" --ext ts",
-    "release": "bumpp package.json --commit 'Release %s' --push --tag --no-git-checks && pnpm publish --access public",
+    "release": "bumpp package.json --commit 'Release %s' --push --tag && pnpm publish --access public --no-git-checks",
     "serve": "esr --serve src/demo.ts"
   },
   "exports": {
