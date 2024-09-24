@@ -16,14 +16,6 @@ export interface GamepadButtonState extends ButtonState {
   value: number;
 }
 
-let $mousemove = null;
-let $mousedown = null;
-let $mouseup = null;
-let $mousewheel = null;
-let $keydown = null;
-let $keyup = null;
-let $gamepadconnected = null;
-let $gamepaddisconnected = null;
 let boundEvents = false;
 
 const setDefaultStates = () => {
@@ -53,14 +45,14 @@ export const destroyInput = () => {
 };
 
 const bindEvents = () => {
-  $mousemove = window.addEventListener("mousemove", onMouseMove);
-  $mousedown = window.addEventListener("mousedown", onMouseDown);
-  $mouseup = window.addEventListener("mouseup", onMouseUp);
-  $mousewheel = window.addEventListener("mousewheel", onMouseWheel);
-  $keydown = window.addEventListener("keydown", onKeyDown);
-  $keyup = window.addEventListener("keyup", onKeyUp);
-  $gamepadconnected = window.addEventListener("gamepadconnected", onGamepadConnected);
-  $gamepaddisconnected = window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp);
+  window.addEventListener("mousewheel", onMouseWheel);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("gamepadconnected", onGamepadConnected);
+  window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
 };
 
 const destroyEvents = () => {

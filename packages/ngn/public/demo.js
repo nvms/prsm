@@ -90,7 +90,13 @@ var createWorld = () => {
     let raf = null;
     let craf = null;
     if (typeof window !== "undefined") {
-      raf = requestAnimationFrame;
+      let now = performance.now();
+      raf = (cb) => {
+        return requestAnimationFrame((timestamp) => {
+          now = timestamp;
+          cb(now);
+        });
+      };
       craf = cancelAnimationFrame;
     } else {
       let now = 0;
