@@ -1,6 +1,6 @@
 {
   "name": "@prsm/express-keepalive-ws",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "author": "",
   "main": "./dist/index.js",
   "devDependencies": {
@@ -27,6 +27,6 @@
   "types": "module",
   "typings": "./dist/index.d.ts",
   "dependencies": {
-    "@prsm/keepalive-ws": "file:../keepalive-ws"
+    "@prsm/keepalive-ws": "^0.3.8"
   }
 }
