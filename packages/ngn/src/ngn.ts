@@ -149,7 +149,7 @@ export const createWorld = () => {
     if (typeof window !== "undefined") {
       let now = performance.now();
       raf = (cb: FrameRequestCallback): number => {
-        return requestAnimationFrame((timestamp) => {
+        return requestAnimationFrame((timestamp: number) => {
           now = timestamp;
           cb(now);
         });
@@ -271,7 +271,7 @@ export const createWorld = () => {
    * @param {string} queryName - The name of the query to retrieve or update results for.
    * @returns {any[]} An array of result objects, each containing an entity and its components as properties.
    */
-  const getQuery = (queryConfig: QueryConfig, queryName: string) => {
+  const getQuery = (queryConfig: QueryConfig, queryName: string): any[] => {
     // If we have non-dirty query results for this queryName, return them
     if (!state[$dirtyQueries].has(queryName) && state[$queryResults][queryName]) {
       return state[$queryResults][queryName].results;
