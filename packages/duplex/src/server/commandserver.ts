@@ -63,18 +63,20 @@ export class TokenServer extends EventEmitter {
     });
   }
 
-  close(callback?: () => void) {
-    if (!this.server.listening) return false;
+  close(callback?: () => void): Promise<void> {
+    if (!this.server.listening) return Promise.resolve();
 
     this.status = Status.CLOSED;
-    this.server.close(() => {
-      for (const connection of this.connections) {
-        connection.remoteClose();
-      }
-      if (callback) callback();
-    });
 
-    return true;
+    return new Promise<void>((resolve) => {
+      this.server.close(() => {
+        for (const connection of this.connections) {
+          connection.remoteClose();
+        }
+        if (callback) callback();
+        resolve();
+      });
+    });
   }
 
   applyListeners() {

@@ -58,16 +58,18 @@ class TokenClient extends EventEmitter {
     });
   }
 
-  close(callback?: () => void) {
-    if (this.status <= Status.CLOSED) return false;
+  close(callback?: () => void): Promise<void> {
+    if (this.status <= Status.CLOSED) return Promise.resolve();
 
     this.status = Status.CLOSED;
-    this.socket.end(() => {
-      this.connection = null;
-      if (callback) callback();
-    });
 
-    return true;
+    return new Promise<void>((resolve) => {
+      this.socket.end(() => {
+        this.connection = null;
+        if (callback) callback();
+        resolve();
+      });
+    });
   }
 
   send(buffer: Buffer) {
@@ -83,6 +85,7 @@ class TokenClient extends EventEmitter {
       this.hadError = true;
 
       // Don't emit ECONNRESET errors during normal disconnection scenarios
+      // @ts-ignore
       if (error.code !== "ECONNRESET" || this.status !== Status.CLOSED) {
         this.emit("error", error);
       }
@@ -152,8 +155,8 @@ class QueueClient extends TokenClient {
     }
   }
 
-  close() {
-    return super.close();
+  close(callback?: () => void): Promise<void> {
+    return super.close(callback);
   }
 }
 
@@ -287,7 +290,7 @@ export class CommandClient extends QueueClient {
     });
   }
 
-  close() {
-    return super.close();
+  close(callback?: () => void): Promise<void> {
+    return super.close(callback);
   }
 }

@@ -17,18 +17,13 @@ describe("Advanced CommandClient and CommandServer Tests", () => {
   });
 
   afterEach(async () => {
+    // Close connections in order
     if (client.status === Status.ONLINE) {
-      await new Promise<void>((resolve) => {
-        client.once("close", () => resolve());
-        client.close();
-      });
+      await client.close();
     }
 
     if (server.status === Status.ONLINE) {
-      await new Promise<void>((resolve) => {
-        server.once("close", () => resolve());
-        server.close();
-      });
+      await server.close();
     }
   });
 
@@ -40,16 +35,10 @@ describe("Advanced CommandClient and CommandServer Tests", () => {
     expect(client.status).toBe(Status.ONLINE);
 
     // First close the client gracefully
-    await new Promise<void>((resolve) => {
-      client.once("close", () => resolve());
-      client.close();
-    });
-
+    await client.close();
+    
     // Then close the server
-    await new Promise<void>((resolve) => {
-      server.once("close", () => resolve());
-      server.close();
-    });
+    await server.close();
 
     // Restart server
     await server.connect();
@@ -151,10 +140,7 @@ describe("Advanced CommandClient and CommandServer Tests", () => {
     await expect(commandPromise).resolves.toBe("Echo: Queued Message");
 
     // Clean up
-    await new Promise<void>((resolve) => {
-      queuedClient.once("close", () => resolve());
-      queuedClient.close();
-    });
+    await queuedClient.close();
   }, 3000);
 
   test("multiple concurrent commands are handled correctly", async () => {
@@ -257,15 +243,7 @@ describe("Advanced CommandClient and CommandServer Tests", () => {
     });
 
     // Clean up
-    await Promise.all(
-      clients.map(
-        (client) =>
-          new Promise<void>((resolve) => {
-            client.once("close", () => resolve());
-            client.close();
-          }),
-      ),
-    );
+    await Promise.all(clients.map((client) => client.close()));
   }, 5000);
 
   test("command returns promise when no callback provided", async () => {
