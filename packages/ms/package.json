@@ -15,12 +15,14 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsup",
+    "test": "vitest run",
     "release": "bumpp package.json && npm publish --access public"
   },
   "type": "module",
   "devDependencies": {
     "@types/node": "^22.4.1",
     "bumpp": "^9.5.1",
-    "tsup": "^8.2.4"
+    "tsup": "^8.2.4",
+    "vitest": "^3.0.9"
   }
 }
