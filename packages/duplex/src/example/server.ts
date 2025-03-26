@@ -8,6 +8,11 @@ const server = new CommandServer({
   secure: false,
 });
 
+server.connect().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
+});
+
 server.command(0, async (payload: any, connection: Connection) => {
   console.log("RECV [0]:", payload);
   return { ok: "OK" };

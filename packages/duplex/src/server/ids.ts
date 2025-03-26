@@ -9,7 +9,9 @@ export class IdManager {
 
   release(id: number) {
     if (id < 0 || id > this.maxIndex) {
-      throw new TypeError(`ID must be between 0 and ${this.maxIndex}. Got ${id}.`);
+      throw new TypeError(
+        `ID must be between 0 and ${this.maxIndex}. Got ${id}.`,
+      );
     }
     this.ids[id] = false;
   }
@@ -33,7 +35,9 @@ export class IdManager {
       }
 
       if (this.index === startIndex) {
-        throw new Error(`All IDs are reserved. Make sure to release IDs when they are no longer used.`);
+        throw new Error(
+          `All IDs are reserved. Make sure to release IDs when they are no longer used.`,
+        );
       }
     }
   }

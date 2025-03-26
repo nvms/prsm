@@ -9,9 +9,10 @@ import { Status } from "../common/status";
 import { IdManager } from "../server/ids";
 import { Queue } from "./queue";
 
-export type TokenClientOptions = tls.ConnectionOptions & net.NetConnectOpts & {
-  secure: boolean;
-};
+export type TokenClientOptions = tls.ConnectionOptions &
+  net.NetConnectOpts & {
+    secure: boolean;
+  };
 
 class TokenClient extends EventEmitter {
   public options: TokenClientOptions;
@@ -23,27 +24,38 @@ class TokenClient extends EventEmitter {
   constructor(options: TokenClientOptions) {
     super();
     this.options = options;
-    this.connect();
+    this.status = Status.OFFLINE; // Initialize status but don't connect yet
   }
 
-  connect(callback?: () => void) {
+  connect(callback?: () => void): Promise<void> {
     if (this.status >= Status.CLOSED) {
-      return false;
+      return Promise.resolve();
     }
 
-    this.hadError = false;
-    this.status = Status.CONNECTING;
+    return new Promise<void>((resolve, reject) => {
+      this.hadError = false;
+      this.status = Status.CONNECTING;
 
-    if (this.options.secure) {
-      this.socket = tls.connect(this.options, callback);
-    } else {
-      this.socket = net.connect(this.options, callback);
-    }
+      const onConnect = () => {
+        if (callback) callback();
+        resolve();
+      };
 
-    this.connection = null;
-    this.applyListeners();
+      if (this.options.secure) {
+        this.socket = tls.connect(this.options, onConnect);
+      } else {
+        this.socket = net.connect(this.options, onConnect);
+      }
 
-    return true;
+      this.socket.once("error", (err) => {
+        if (this.status === Status.CONNECTING) {
+          reject(err);
+        }
+      });
+
+      this.connection = null;
+      this.applyListeners();
+    });
   }
 
   close(callback?: () => void) {
@@ -69,7 +81,11 @@ class TokenClient extends EventEmitter {
   private applyListeners() {
     this.socket.on("error", (error) => {
       this.hadError = true;
-      this.emit("error", error);
+
+      // Don't emit ECONNRESET errors during normal disconnection scenarios
+      if (error.code !== "ECONNRESET" || this.status !== Status.CLOSED) {
+        this.emit("error", error);
+      }
     });
 
     this.socket.on("close", () => {
@@ -123,11 +139,17 @@ class QueueClient extends TokenClient {
 
   private applyEvents() {
     this.on("connect", () => {
-      while (!this.queue.isEmpty) {
-        const item = this.queue.pop();
+      this.processQueue();
+    });
+  }
+
+  private processQueue() {
+    while (!this.queue.isEmpty) {
+      const item = this.queue.pop();
+      if (item) {
         this.sendBuffer(item.value, item.expiresIn);
       }
-    });
+    }
   }
 
   close() {
@@ -136,9 +158,9 @@ class QueueClient extends TokenClient {
 }
 
 export class CommandClient extends QueueClient {
-  private ids = new IdManager(0xFFFF);
+  private ids = new IdManager(0xffff);
   private callbacks: {
-    [id: number]: (error: Error | null, result?: any) => void
+    [id: number]: (result: any, error?: Error) => void;
   } = {};
 
   constructor(options: TokenClientOptions) {
@@ -154,9 +176,9 @@ export class CommandClient extends QueueClient {
         if (this.callbacks[data.id]) {
           if (data.command === 255) {
             const error = ErrorSerializer.deserialize(data.payload);
-            this.callbacks[data.id](error, undefined);
+            this.callbacks[data.id](undefined, error);
           } else {
-            this.callbacks[data.id](null, data.payload);
+            this.callbacks[data.id](data.payload, null);
           }
         }
       } catch (error) {
@@ -165,13 +187,39 @@ export class CommandClient extends QueueClient {
     });
   }
 
-  async command(command: number, payload: any, expiresIn: number = 30_000, callback: (result: any, error: CodeError | Error | null) => void | undefined = undefined) {
+  async command(
+    command: number,
+    payload: any,
+    expiresIn: number = 30_000,
+    callback: (
+      result: any,
+      error: CodeError | Error | null,
+    ) => void | undefined = undefined,
+  ) {
     if (command === 255) {
-      throw new CodeError("Command 255 is reserved.", "ERESERVED", "CommandError");
+      throw new CodeError(
+        "Command 255 is reserved.",
+        "ERESERVED",
+        "CommandError",
+      );
+    }
+
+    // Ensure we're connected before sending commands
+    if (this.status < Status.ONLINE) {
+      try {
+        await this.connect();
+      } catch (err) {
+        if (typeof callback === "function") {
+          callback(undefined, err as Error);
+          return;
+        } else {
+          throw err;
+        }
+      }
     }
 
     const id = this.ids.reserve();
-    const buffer = Command.toBuffer({ id, command, payload })
+    const buffer = Command.toBuffer({ id, command, payload });
 
     this.sendBuffer(buffer, expiresIn);
 
@@ -189,10 +237,18 @@ export class CommandClient extends QueueClient {
         const ret = await Promise.race([response, timeout]);
 
         try {
-          callback(ret, undefined);
-        } catch (callbackError) { /* */ }
-      } catch (error) {
-        callback(undefined, error);
+          if (ret.error) {
+            callback(undefined, ret.error);
+          } else {
+            callback(ret.result, undefined);
+          }
+          // callback(ret, undefined);
+        } catch (callbackError) {
+          /* */
+        }
+      } catch (error: unknown) {
+        const err = error as { result: any; error: any };
+        callback(undefined, err.error);
       }
     } else {
       return Promise.race([response, timeout]);
@@ -200,27 +256,34 @@ export class CommandClient extends QueueClient {
   }
 
   private createTimeoutPromise(id: number, expiresIn: number) {
-    return new Promise((resolve, reject) => {
+    return new Promise<{ error: any; result: any }>((_, reject) => {
       setTimeout(() => {
         this.ids.release(id);
         delete this.callbacks[id];
-        reject(new CodeError("Command timed out.", "ETIMEOUT", "CommandError"));
+        reject({
+          error: new CodeError(
+            "Command timed out.",
+            "ETIMEOUT",
+            "CommandError",
+          ),
+          result: null,
+        });
       }, expiresIn);
     });
   }
 
   private createResponsePromise(id: number) {
-    return new Promise((resolve, reject) => {
-      this.callbacks[id] = (error: Error | null, result?: any) => {
+    return new Promise<{ error: any; result: any }>((resolve, reject) => {
+      this.callbacks[id] = (result: any, error?: Error) => {
         this.ids.release(id);
         delete this.callbacks[id];
 
         if (error) {
-          reject(error);
+          reject({ error, result: null });
         } else {
-          resolve(result);
+          resolve({ result, error: null });
         }
-      }
+      };
     });
   }
 

@@ -10,18 +10,23 @@ const client = new CommandClient({
 const payload = { things: "stuff", numbers: [1, 2, 3] };
 
 async function main() {
-  const callback = (result: any, error: CodeError) => {
-    if (error) {
-      console.log("ERR [0]", error.code);
-      return;
-    }
+  try {
+    await client.connect();
 
-   console.log("RECV [0]", result);
-   client.close();
-  };
+    const callback = (result: any, error: CodeError) => {
+      if (error) {
+        console.log("ERR [0]", error.code);
+        return;
+      }
 
-  client.command(0, payload, 10, callback);
+      console.log("RECV [0]", result);
+      client.close();
+    };
 
+    client.command(0, payload, 10, callback);
+  } catch (err) {
+    console.error("Connection error:", err);
+  }
 }
 
 main();

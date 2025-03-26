@@ -7,9 +7,11 @@ import { Connection } from "../common/connection";
 import { ErrorSerializer } from "../common/errorserializer";
 import { Status } from "../common/status";
 
-export type TokenServerOptions = tls.TlsOptions & net.ListenOptions & net.SocketConstructorOpts & {
-  secure?: boolean;
-};
+export type TokenServerOptions = tls.TlsOptions &
+  net.ListenOptions &
+  net.SocketConstructorOpts & {
+    secure?: boolean;
+  };
 
 export class TokenServer extends EventEmitter {
   connections: Connection[] = [];
@@ -24,13 +26,14 @@ export class TokenServer extends EventEmitter {
     super();
 
     this.options = options;
+    this.status = Status.OFFLINE;
 
     if (this.options.secure) {
       this.server = tls.createServer(this.options, function (clientSocket) {
         clientSocket.on("error", (err) => {
           this.emit("clientError", err);
         });
-      })
+      });
     } else {
       this.server = net.createServer(this.options, function (clientSocket) {
         clientSocket.on("error", (err) => {
@@ -40,18 +43,24 @@ export class TokenServer extends EventEmitter {
     }
 
     this.applyListeners();
-    this.connect();
+    // Don't automatically connect in constructor
   }
 
-  connect(callback?: () => void) {
-    if (this.status >= Status.CONNECTING) return false;
+  connect(callback?: () => void): Promise<void> {
+    if (this.status >= Status.CONNECTING) return Promise.resolve();
 
     this.hadError = false;
     this.status = Status.CONNECTING;
-    this.server.listen(this.options, () => {
-      if (callback) callback();
+
+    return new Promise<void>((resolve) => {
+      this.server.listen(this.options, () => {
+        // Wait a small tick to ensure the server socket is fully bound
+        setImmediate(() => {
+          if (callback) callback();
+          resolve();
+        });
+      });
     });
-    return true;
   }
 
   close(callback?: () => void) {
@@ -129,7 +138,7 @@ type CommandFn = (payload: any, connection: Connection) => Promise<any>;
 
 export class CommandServer extends TokenServer {
   private commands: {
-    [command: number]: CommandFn
+    [command: number]: CommandFn;
   } = {};
 
   constructor(options: TokenServerOptions) {
@@ -157,10 +166,26 @@ export class CommandServer extends TokenServer {
     this.commands[command] = fn;
   }
 
-  private async runCommand(id: number, command: number, payload: any, connection: Connection) {
+  private async runCommand(
+    id: number,
+    command: number,
+    payload: any,
+    connection: Connection,
+  ) {
     try {
       if (!this.commands[command]) {
-        throw new CodeError(`Command (${command}) not found.`, "ENOTFOUND", "CommandError");
+        connection.send(
+          Command.toBuffer({
+            command: 255,
+            id,
+            payload: new CodeError(
+              `Command (${command}) not found.`,
+              "ENOTFOUND",
+              "CommandError",
+            ),
+          }),
+        );
+        return;
       }
 
       const result = await this.commands[command](payload, connection);
@@ -169,7 +194,9 @@ export class CommandServer extends TokenServer {
       // we respond with a simple "OK".
       const payloadResult = result === undefined ? "OK" : result;
 
-      connection.send(Command.toBuffer({ command, id, payload: payloadResult }));
+      connection.send(
+        Command.toBuffer({ command, id, payload: payloadResult }),
+      );
     } catch (error) {
       const payload = ErrorSerializer.serialize(error);
 
