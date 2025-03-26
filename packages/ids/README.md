@@ -2,29 +2,41 @@
 
 [![NPM version](https://img.shields.io/npm/v/@prsm/ids?color=a1b858&label=)](https://www.npmjs.com/package/@prsm/ids)
 
-Short, obfuscated, collision-proof, and reversible identifiers.
+Short, obfuscated, collision-proof, reversible identifiers.
 
-Because sometimes internal identifiers are sensitive, or you just don't want to let a user know that their ID is 1.
-
-```typescript
-import ID from "@prsm/ids";
-
-ID.encode(12389125); // phsV8T
-ID.decode("phsV8T"); // 12389125
-```
-
-You can (and should) set your own alphabet string:
+## Usage
 
 ```typescript
-ID.alphabet = "GZwBHpfWybgQ5d_2mM-jh84K69tqYknx7LN3zvDrcSJVRPXsCFT";
-ID.alphabet = "TgzMhJXtRSVBnHFksZQc5j-yGx84W3rNDfK6p_Cbqd29YLm7Pwv";
-ID.alphabet = "kbHn53dZphT2FvGMBxYJKqS7-cPV_Ct6LwjWRDfXmygzrQ48N9s";
+import id from "@prsm/ids";
+
+id.encode(12389125); // "7rYTs_"
+id.decode("7rYTs_"); // 12389125
 ```
 
-If your use case makes sense, you can also generate a random alphabet string with `randomizeAlphabet`.
+## Configuration
 
-When the alphabet changes, though, the encoded IDs will change as well. Decoding will still work, but the decoded value will be different.
-
+Set custom alphabet:
 ```typescript
-ID.randomizeAlphabet();
+id.setAlphabet("GZwBHpfWybgQ5d_2mM-jh84K69tqYknx7LN3zvDrcSJVRPXsCFT");
 ```
+
+Randomize alphabet:
+```typescript
+id.randomizeAlphabet();
+```
+
+## API
+
+| Function              | Description                               |
+|-----------------------|-------------------------------------------|
+| `encode(num)`         | Converts number to obfuscated string      |
+| `decode(str)`         | Converts obfuscated string back to number |
+| `setAlphabet(str)`    | Sets custom alphabet for encoding         |
+| `getAlphabet()`       | Returns current alphabet                  |
+| `randomizeAlphabet()` | Shuffles alphabet characters randomly     |
+
+## Notes
+
+- Maximum encodable value: 2,147,483,647 (MAX_INT32)
+- Changing alphabet changes encoded values
+- Encoded values must be decoded with same alphabet
