@@ -1,43 +1,72 @@
-# jwt
+# @prsm/jwt
 
-A package for encoding, decoding, and verifying JWTs.
+[![NPM version](https://img.shields.io/npm/v/@prsm/jwt?color=a1b858&label=)](https://www.npmjs.com/package/@prsm/jwt)
 
-# Installation
+A lightweight JWT implementation for encoding, decoding, and verifying JSON Web Tokens.
 
-`npm install @prsm/jwt`
+## Installation
 
-## Encoding
+```bash
+npm install @prsm/jwt
+```
+
+## Usage
+
+### Encoding Tokens
 
 ```typescript
 import { encode } from "@prsm/jwt";
 
-const payload = {
-  iat: Date.now(),
-  exp: Date.now() + 3600,
-};
+// Create a token with standard claims
+const token = encode(
+  {
+    sub: "user123",
+    iat: Date.now(),
+    exp: Date.now() + 3600000, // 1 hour from now
+  },
+  "your-secret-key"
+);
 
-const token = encode(payload, process.env.SIGNING_KEY);
+// Specify algorithm (default is HS256)
+const rsaToken = encode(payload, privateKey, "RS256");
 ```
 
-## Verifying
+### Verifying Tokens
 
 ```typescript
 import { verify } from "@prsm/jwt";
 
-const result = verify(token, process.env.SIGNING_KEY);
+const result = verify(token, "your-secret-key");
 
-if (!result.sig) throw new Error("signature verification failed");
-if (result.exp) throw new Error("token has expired");
-if (!result.nbf) throw new Error("token is not yet valid")
+// Check verification results
+if (!result.sig) {
+  console.error("Invalid signature");
+}
 
-// token payload is available at result.decoded.payload
+if (result.exp) {
+  console.error("Token expired");
+}
+
+// Access the decoded payload
+const { sub, iat } = result.decoded.payload;
 ```
 
-## Decoding
+### Decoding Without Verification
 
 ```typescript
 import { decode } from "@prsm/jwt";
 
-const result = decode(token);
-// { header: { alg: "HS256", typ: "JWT" }, payload: { iat: 123456789, exp: 123456789 }, signature: "..."
+const { header, payload, signature } = decode(token);
 ```
+
+## Supported Algorithms
+
+| Algorithm | Description                    |
+|-----------|--------------------------------|
+| HS256     | HMAC with SHA-256 (default)    |
+| HS384     | HMAC with SHA-384              |
+| HS512     | HMAC with SHA-512              |
+| RS256     | RSA Signature with SHA-256     |
+| RS384     | RSA Signature with SHA-384     |
+| RS512     | RSA Signature with SHA-512     |
+| ES256     | ECDSA Signature with SHA-256   |

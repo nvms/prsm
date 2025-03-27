@@ -8,10 +8,6 @@ A lightweight utility for parsing and converting time strings to milliseconds an
 
 ```bash
 npm install @prsm/ms
-# or
-yarn add @prsm/ms
-# or
-pnpm add @prsm/ms
 ```
 
 ## Usage
