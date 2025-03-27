@@ -1,14 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { KeepAliveClient, Status } from "../src/client/client";
 import { KeepAliveServer } from "../src/server/index";
-import { WebSocket, WebSocketServer } from "ws";
 
-// Helper to create a WebSocket server for testing
 const createTestServer = (port: number) => {
   return new KeepAliveServer({
     port,
-    pingInterval: 1000, // Faster for testing
-    latencyInterval: 500, // Faster for testing
+    pingInterval: 1000,
+    latencyInterval: 500,
   });
 };
 
@@ -20,13 +18,11 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
   beforeEach(async () => {
     server = createTestServer(port);
 
-    // Wait for the server to start
     await new Promise<void>((resolve) => {
       server.on("listening", () => {
         resolve();
       });
 
-      // In case the server is already listening
       if (server.listening) {
         resolve();
       }
@@ -36,12 +32,10 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
   });
 
   afterEach(async () => {
-    // Close connections in order
     if (client.status === Status.ONLINE) {
       await client.close();
     }
 
-    // Close the server
     return new Promise<void>((resolve) => {
       if (server) {
         server.close(() => {
@@ -81,7 +75,6 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
     await client.connect();
     expect(client.status).toBe(Status.ONLINE);
 
-    // Second connect should resolve immediately
     await client.connect();
     expect(client.status).toBe(Status.ONLINE);
   }, 10000);
@@ -90,7 +83,6 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
     await client.close();
     expect(client.status).toBe(Status.OFFLINE);
 
-    // Second close should resolve immediately
     await client.close();
     expect(client.status).toBe(Status.OFFLINE);
   }, 10000);

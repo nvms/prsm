@@ -100,7 +100,7 @@ export class Connection extends EventEmitter {
 
   send(cmd: Command): boolean {
     if (this.isDead) return false;
-    
+
     try {
       this.socket.send(stringifyCommand(cmd));
       return true;
@@ -112,7 +112,7 @@ export class Connection extends EventEmitter {
 
   close(): boolean {
     if (this.isDead) return false;
-    
+
     try {
       this.socket.close();
       return true;

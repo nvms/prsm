@@ -131,10 +131,8 @@ export class KeepAliveClient extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       try {
-        // Create a new WebSocket connection
         this.socket = new WebSocket(this.url);
 
-        // Set up a direct onopen handler to ensure we catch the connection event
         this.socket.onopen = () => {
           this._status = Status.ONLINE;
           this.connection.socket = this.socket;
@@ -146,7 +144,6 @@ export class KeepAliveClient extends EventEmitter {
           resolve();
         };
 
-        // Set up a direct onerror handler for immediate connection errors
         this.socket.onerror = (error) => {
           this._status = Status.OFFLINE;
           reject(
