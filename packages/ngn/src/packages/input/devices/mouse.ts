@@ -33,12 +33,13 @@ const buttonsDownLastFrame: ObservedMouseState = { buttons: {} };
  */
 export const mouseUpdate = (): void => {
   for (const [button, value] of Object.entries(observedMouseState.buttons)) {
-    mouseState.buttons[button] = {
+    const actualButton = Object.keys(mouseMapping)[Object.values(mouseMapping).indexOf(button)] || button;
+    mouseState.buttons[actualButton] = {
       ...value,
       justReleased: !value.pressed && buttonsDownLastFrame.buttons?.[button]?.pressed,
     };
-    buttonsDownLastFrame.buttons[button] = { ...value, justPressed: false };
-    observedMouseState.buttons[button] = { ...value, justPressed: false };
+    buttonsDownLastFrame.buttons[actualButton] = { ...value, justPressed: false };
+    observedMouseState.buttons[actualButton] = { ...value, justPressed: false };
   }
 };
 

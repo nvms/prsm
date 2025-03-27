@@ -39,7 +39,7 @@ export const keyboard = () => ({
      * If the key is not found or not pressed, the `pressed`, `justPressed`, and `justReleased` properties will be set to `false`.
      */
     getKey(b: string): ButtonState {
-      const key = Object.keys(keyboardMapping)[Object.values(keyboardMapping).indexOf(b)];
+      const key = Object.keys(keyboardMapping)[Object.values(keyboardMapping).indexOf(b)] || b;
       if (key) return keyboardState.keys[key];
       if (keyboardState.keys[b]) return keyboardState.keys[b];
       return { pressed: false, justPressed: false, justReleased: false };
@@ -54,12 +54,13 @@ export const keyboard = () => ({
  */
 export const keyboardUpdate = (): void => {
   for (const [key, value] of Object.entries(observedKeyboardState.keys)) {
-    keyboardState.keys[key] = {
+    const actualKey = Object.keys(keyboardMapping)[Object.values(keyboardMapping).indexOf(key)] || key;
+    keyboardState.keys[actualKey] = {
       ...value,
-      justReleased: !value.pressed && keysDownLastFrame.keys?.[key]?.pressed,
+      justReleased: !value.pressed && keysDownLastFrame.keys?.[actualKey]?.pressed,
     };
-    keysDownLastFrame.keys[key] = { ...value, justPressed: false };
-    observedKeyboardState.keys[key] = { ...value, justPressed: false };
+    keysDownLastFrame.keys[actualKey] = { ...value, justPressed: false };
+    observedKeyboardState.keys[actualKey] = { ...value, justPressed: false };
   }
 };
 

@@ -29,8 +29,7 @@ function getCreateId(opts) {
     if (!str || num === 256) {
       str = "";
       num = (1 + len) / 2 | 0;
-      while (num--)
-        str += HEX[256 * Math.random() | 0];
+      while (num--) str += HEX[256 * Math.random() | 0];
       str = str.substring(num = 0, len);
     }
     const date = Date.now().toString(36);
@@ -113,8 +112,7 @@ var createWorld = () => {
     let xfps = 1;
     const xtimes = [];
     function handler(now) {
-      if (!state[$running])
-        return craf(loopHandler);
+      if (!state[$running]) return craf(loopHandler);
       while (xtimes.length > 0 && xtimes[0] <= now - 1e3) {
         xtimes.shift();
       }
@@ -142,7 +140,9 @@ var createWorld = () => {
   };
   function step2() {
     for (const system of state[$systems]) {
-      system(state);
+      if (system(state) === null) {
+        break;
+      }
     }
   }
   function addSystem2(...systems) {
@@ -192,8 +192,7 @@ var createWorld = () => {
   };
   const query = ({ and = [], or = [], not = [], tag = [] }) => {
     const validQuery = (c) => Object.prototype.hasOwnProperty.call(c, "name");
-    if (![...and, ...or, ...not].every(validQuery))
-      throw new Error("Invalid query");
+    if (![...and, ...or, ...not].every(validQuery)) throw new Error("Invalid query");
     const queryName = ["and", ...and.map((c) => c.name), "or", ...or.map((c) => c.name), "not", ...not.map((c) => c.name), "tag", ...tag].join("");
     [...and, ...or, ...not].forEach((c) => {
       const dependencies = state[$queryDependencies].get(c.name) || /* @__PURE__ */ new Set();
@@ -210,8 +209,7 @@ var createWorld = () => {
   };
   function destroyEntity(e) {
     const exists = state[$eMap][e.id];
-    if (!exists)
-      return false;
+    if (!exists) return false;
     const componentsToRemove = Object.keys(state[$eciMap][e.id]);
     componentsToRemove.forEach((componentName) => {
       state[$ceMap][componentName] = state[$ceMap][componentName].filter((id) => id !== e.id);
@@ -227,16 +225,14 @@ var createWorld = () => {
     return true;
   }
   function onEntityCreated(fn) {
-    if (typeof fn !== "function")
-      return;
+    if (typeof fn !== "function") return;
     state[$onEntityCreated].push(fn);
     return () => {
       state[$onEntityCreated] = state[$onEntityCreated].filter((f) => f !== fn);
     };
   }
   function createComponent(entity, component, defaults = {}) {
-    if (state[$eciMap]?.[entity.id]?.[component.name] !== void 0)
-      return entity;
+    if (state[$eciMap]?.[entity.id]?.[component.name] !== void 0) return entity;
     const affectedQueries = state[$queryDependencies].get(component.name);
     if (affectedQueries) {
       affectedQueries.forEach(markQueryDirty);
@@ -348,8 +344,7 @@ var createWorld = () => {
   }
   function migrateEntityId(oldId, newId) {
     const entity = state[$eMap][oldId];
-    if (!entity)
-      return;
+    if (!entity) return;
     entity.id = newId;
     state[$eMap][newId] = entity;
     delete state[$eMap][oldId];
@@ -582,8 +577,7 @@ var createParticleEmitter = (opts) => {
   let dead = false;
   let paused = false;
   const update = (state) => {
-    if (dead)
-      return;
+    if (dead) return;
     context.globalCompositeOperation = opts.blendMode ?? "source-over";
     const { loopDelta } = state.time;
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -683,7 +677,6 @@ var createParticleEmitter = (opts) => {
     if (opts.burst && particles.length === 0) {
       destroy();
     }
-    context.globalCompositeOperation = "source-over";
   };
   const destroy = () => {
     dead = true;
@@ -798,7 +791,7 @@ var particleSystem = createParticleSystem({
 var emitter = particleSystem.createEmitter({
   x: canvas.width / 2,
   y: canvas.height / 2,
-  maxParticles: 100,
+  maxParticles: 120,
   rate: 0.1,
   lifetime: 1e3,
   lifetimeVariation: 0.2,
@@ -829,8 +822,8 @@ var emitter = particleSystem.createEmitter({
       particleSystem.createEmitter({
         x: particle.x,
         y: particle.y,
-        maxParticles: 3,
-        lifetimeVariation: 0.2,
+        maxParticles: 4,
+        lifetimeVariation: 0.5,
         size: 3,
         sizeVariation: 2,
         colorStart: ["#FF0000", "#ff5100"],
@@ -851,8 +844,6 @@ var emitter = particleSystem.createEmitter({
   },
   onUpdate: (particle, state) => {
     particle.size = Math.max(0, particle.size - 0.35);
-    const v = pulse(state.time.elapsed, 0.25, -1, 1);
-    particle.x += v * 1;
   },
   onRemove: (particle, state) => {
   }
@@ -868,14 +859,20 @@ var fpsDrawSystem = (state) => {
   draw.text({ x: 10, y: 20 }, `FPS: ${state.time.fps.toFixed(2)}`, "white");
 };
 var particleCountSystem = (state) => {
-  draw.text({ x: 10, y: 40 }, `Particle count: ${particleSystem.numParticles}`, "white");
+  draw.text({ x: 10, y: 40 }, `Particle count: ${particleSystem.numParticles}. Emitter count: ${emitter.particles.length}`, "white");
 };
 var particlePositionSystem = (state) => {
   const { time } = state;
   const xPos = pulse(time.elapsed, 0.25, canvas.width / 2 - 100, canvas.width / 2 + 100);
   emitter.x = xPos;
 };
-addSystem(clearCanvasSystem, fpsDrawSystem, particleCountSystem, particlePositionSystem, particleSystem);
+addSystem(
+  clearCanvasSystem,
+  fpsDrawSystem,
+  particleCountSystem,
+  particlePositionSystem,
+  particleSystem
+);
 defineMain(() => {
   step();
 });

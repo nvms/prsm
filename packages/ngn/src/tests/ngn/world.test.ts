@@ -494,7 +494,9 @@ export default testSuite(async () => {
     await sleep(500);
 
     expect(i).toBe(3);
-    expect(state.time.delta).toBe(16.670000000000016);
+    // delta is scaled, so it should be half of rawDelta
+    expect(state.time.delta).toBeCloseTo(state.time.rawDelta * 0.5, 1);
+    expect(state.time.rawDelta).toBeCloseTo(16.67, 1);
   });
 
   test("step calls systems, passing world", async () => {

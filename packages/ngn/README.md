@@ -4,25 +4,25 @@ An ECS framework (and robust input system) for the web.
 
 <!-- vim-markdown-toc GFM -->
 
-- [Comprehensive sample](#comprehensive-sample)
-- [Installation](#installation)
-- [API overview](#api-overview)
-  - [createWorld](#createworld)
-    - [Entities](#entities)
-    - [Components](#components)
-      - [Extending components](#extending-components)
-  - [Extras](#extras)
-    - [Keyboard, mouse and gamepad input](#keyboard-mouse-and-gamepad-input)
-      - [Input system](#input-system)
-      - [ButtonState](#buttonstate)
-      - [Mouse](#mouse)
-      - [Keyboard](#keyboard)
-      - [Gamepad](#gamepad)
-      - [Input usage examples](#input-usage-examples)
-        - [Gamepad](#gamepad-1)
-        - [Keyboard](#keyboard-1)
-        - [Mouse](#mouse-1)
-    - [Expiring log system](#expiring-log-system)
+* [Comprehensive sample](#comprehensive-sample)
+* [Installation](#installation)
+* [API overview](#api-overview)
+  * [createWorld](#createworld)
+    * [Entities](#entities)
+    * [Components](#components)
+      * [Extending components](#extending-components)
+  * [Extras](#extras)
+    * [Keyboard, mouse and gamepad input](#keyboard-mouse-and-gamepad-input)
+      * [Input system](#input-system)
+      * [ButtonState](#buttonstate)
+      * [Mouse](#mouse)
+      * [Keyboard](#keyboard)
+      * [Gamepad](#gamepad)
+      * [Input usage examples](#input-usage-examples)
+        * [Gamepad](#gamepad-1)
+        * [Keyboard](#keyboard-1)
+        * [Mouse](#mouse-1)
+    * [Expiring log system](#expiring-log-system)
 
 <!-- vim-markdown-toc -->
 
@@ -83,6 +83,7 @@ const player =
     .addComponent(Alive)
     .addTag("player");
 
+// Create a bunch of monsters
 Array
   .from(Array(50))
   .forEach((i) =>
@@ -181,20 +182,31 @@ const { state, createEntity, getEntity, onEntityCreated, query, addSystem, remov
   - Is passed to all systems (if you use ngn's system mechanics, which is optional).
   - Contains a useful `time` object that looks like:
 
-  * `state.time.delta` - time since last frame in ms, unaffected by scale.
-  * `state.time.loopDelta` - time since last call to main game loop, affected by sclae. useful for calculations involving time and scale.
-  * `state.time.scale` - time scale. (default: `1`, valid: `0.1 - 1`).
-    - Does not affect framerate at all. The scale determines how often to call the main game loop (if you use choose to use ngn's ticker). On a 60hz display, at a scale of 1, the main game loop is called every 16~ms, and every 33~ms at a scale of 0.5.
+  * `state.time.delta` - time since last frame in ms, scaled by time.scale. Use this value for all physics and movement calculations to ensure they respect the time scale.
+  * `state.time.rawDelta` - raw, unscaled time since last frame in ms. This is the actual time between render frames and doesn't change with time scale.
+  * `state.time.loopDelta` - time since last call to main game loop, affected by scale.
+  * `state.time.scale` - time scale. (default: `1`).
+    - Does not affect framerate at all. The scale affects both how often the main game loop is called and the delta time used for physics/movement calculations. At a scale of 1, the main loop is called every frame and delta equals rawDelta. At a scale of 0.5, the main loop is called approximately every other frame and delta is half of rawDelta.
+
+  > **Important:** Time scaling separates rendering framerate from simulation speed. The game will always render at the device's refresh rate (e.g., 60fps), but the simulation speed (how fast objects move, animations play, etc.) is controlled by the time scale. Always use `delta` in your movement and physics calculations to ensure they respect the time scale:
+  > ```typescript
+  > // This will move at half speed when time.scale is 0.5
+  > position.x += velocity.x * state.time.delta;
+  > ```
   * `state.time.elapsed` - time since `start` was called in ms.
   * `state.time.fps` - frames per second.
 
-This table may help provide clarity to the behavior of `time.scale`.
+  > **Note:** The "last frame" and "last call to main game loop" are different concepts. The engine always runs at the device's refresh rate (e.g. 60fps), so `rawDelta` and `delta` update every frame. However, the main game loop (where your game logic runs) may be called less frequently based on the time scale. For example, at scale 0.5, the main game loop runs every other frame, resulting in a `loopDelta` that's approximately twice the `delta`.
 
-| scale | fps | delta | loopDelta |
-| ----- | --- | ----- | --------- |
-| 1     | 120 | 8.33  | 8.33      |
-| 0.5   | 120 | 8.33  | 16.66     |
-| 0.1   | 120 | 8.33  | 83.33     |
+This table may help provide clarity to the behavior of `time.scale`:
+
+| scale | fps | rawDelta | delta | loopDelta | Description                                            |
+| ----- | --- | -------- | ----- | --------- | -----------                                            |
+| 1     | 60  | 16.67    | 16.67 | 16.67     | Normal speed - main loop called exactly once per frame |
+| 0.5   | 60  | 16.67    | 8.33  | 33.34     | Half speed - main loop called every ~2 frames          |
+| 2.0   | 60  | 16.67    | 33.34 | 8.33      | Double speed - main loop called ~twice per frame       |
+
+The engine always renders at the device's refresh rate (fps), but the frequency of main loop calls and the simulation time (delta) are affected by the time scale.
 
 ### Entities
 

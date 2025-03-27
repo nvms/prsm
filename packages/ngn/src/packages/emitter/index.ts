@@ -55,32 +55,169 @@ type BlendMode =
   | "xor";
 
 export type ParticleEmitterOptions = {
-  x?: number; // X position
-  y?: number; // Y position
-  maxParticles?: number; // Max number of particles
-  rate?: number; // Particles per second
-  lifetime?: number; // Lifetime of each particle
-  lifetimeVariation?: number; // Variation in lifetime
-  size?: number; // Size of each particle
-  sizeVariation?: number; // Variation in size
-  colorStart?: string | string[]; // Start color
-  colorEnd?: string | string[]; // End color
-  colorEasing?: ColorEasing; // Easing function for color
+  /**
+   * The x coordinate for new particles.
+   * Default is 0.
+   * Determines the horizontal start position of particle emission. Can be changed at any time.
+   */
+  x?: number;
+
+  /**
+   * The y coordinate for new particles.
+   * Default is 0.
+   * Determines the vertical start position of particle emission.  Can be changed at any time.
+   */
+  y?: number;
+
+  /**
+   * Maximum number of particles that can exist at one time.
+   * Default is 100.
+   * Helps manage performance by capping particle count.
+   */
+  maxParticles?: number;
+
+  /**
+   * Number of particles emitted per millisecond interval.
+   * Default is 1.
+   * Controls the frequency of particle emission in relation to time.
+   */
+  rate?: number;
+
+  /**
+   * Lifetime of each particle in milliseconds.
+   * Default is 1000 (1 second).
+   * Determines how long a particle will exist before disappearing.
+   */
+  lifetime?: number;
+
+  /**
+   * Variation in particle lifetime as a fraction of `lifetime`.
+   * Provide a value between 0 and 1.
+   * Default is 0.
+   * Allows particles to have different lifetimes, adding randomness.
+   */
+  lifetimeVariation?: number;
+
+  /**
+   * Base size of each particle.
+   * Default is 5.
+   * Represents the default size/scale factor for particles.
+   */
+  size?: number;
+
+  /**
+   * Variation in size as a fraction of `size`.
+   * Provide a value between 0 and 1.
+   * Default is 0.
+   * Introduces variability to particle sizes.
+   */
+  sizeVariation?: number;
+
+  /**
+   * Initial color or array of possible initial colors for particles in hexadecimal format.
+   * Default is "#000000".
+   * Specifies the starting color of particles.
+   */
+  colorStart?: string | string[];
+
+  /**
+   * Final color or array of possible end colors for particles in hexadecimal format.
+   * Default is "#000000".
+   * Specifies the color particles will transition to over their lifetime.
+   */
+  colorEnd?: string | string[];
+
+  /**
+   * Easing function to interpolate between `colorStart` and `colorEnd`.
+   * Default is `ColorEasing.LINEAR`.
+   * Determines how the color changes over the particle's lifetime.
+   */
+  colorEasing?: ColorEasing;
+
+  /**
+   * Easing function for fade out effect.
+   * Default is `ColorEasing.LINEAR`.
+   * Controls opacity transition as particles disappear.
+   */
   fadeOutEasing?: FadeEasing;
-  speed?: number; // Speed of each particle
-  speedVariation?: number; // Variation in speed
-  angle?: number; // Angle of emission
-  spread?: number; // Spread of emission
-  gravity?: { x: number; y: number }; // Gravity affecting the particles
-  blendMode?: BlendMode; // Blend mode
-  canvas: HTMLCanvasElement; // Canvas to draw on
-  burst?: boolean; // If true, emit all particles at once and then stop
-  /** Per-particle initialization callback. */
-  onInit?: (particle: Particle, state: WorldState) => void; // Callback for particle initialization
-  /** Per-particle update callback. */
-  onUpdate?: (particle: Particle, state: WorldState) => void; // Callback for particle update
-  /** Per-particle removal callback. */
-  onRemove?: (particle: Particle, state: WorldState) => void; // Callback for particle removal
+
+  /**
+   * Base speed of particle movement in pixels per millisecond.
+   * Default is 0.1.
+   * Determines how fast particles move from their origin.
+   */
+  speed?: number;
+
+  /**
+   * Variation in speed as a fraction of `speed`.
+   * Provide a value between 0 and 1.
+   * Default is 0.
+   * Introduces speed variability amongst particles.
+   */
+  speedVariation?: number;
+
+  /**
+   * Emission angle in degrees.
+   * Default is 0.
+   * Sets the direction of initial particle movement.
+   */
+  angle?: number;
+
+  /**
+   * Spread angle in degrees around the emission angle for particle dispersion.
+   * Default is 0.
+   * Widens the field of initial particle directions.
+   */
+  spread?: number;
+
+  /**
+   * Gravity effect on particles as x and y components.
+   * Default is {x: 0, y: 0}.
+   * It simulates gravitational forces affecting particle trajectories.
+   */
+  gravity?: { x: number; y: number };
+
+  /**
+   * Blend mode used for particle rendering.
+   * Default is the canvas context’s "source-over".
+   * Determines how particles blend with the background/canvas.
+   */
+  blendMode?: BlendMode;
+
+  /**
+   * HTMLCanvasElement on which particles are drawn.
+   * Required parameter.
+   * Represents the rendering surface for the particle system.
+   */
+  canvas: HTMLCanvasElement;
+
+  /**
+   * If true, emit all particles at once and then stop.
+   * Default is false.
+   * Changes emitter behavior from continuous to singular burst.
+   */
+  burst?: boolean;
+
+  /**
+   * Callback invoked on each particle initialization.
+   * Default is undefined.
+   * Useful for setting initial particle properties dynamically.
+   */
+  onInit?: (particle: Particle, state: WorldState) => void;
+
+  /**
+   * Callback for code execution every frame as each particle updates.
+   * Default is undefined.
+   * Allows interaction or modification of particles per update loop.
+   */
+  onUpdate?: (particle: Particle, state: WorldState) => void;
+
+  /**
+   * Callback invoked when a particle is removed.
+   * Default is undefined.
+   * Useful for cleanup or concluding actions when particles disappear.
+   */
+  onRemove?: (particle: Particle, state: WorldState) => void;
 };
 
 const getDefaultParticleEmitterOptions = (opts: Partial<ParticleEmitterOptions>): ParticleEmitterOptions => ({
@@ -306,7 +443,7 @@ export const createParticleEmitter = (opts: ParticleEmitterOptions): ParticleEmi
       destroy();
     }
 
-    context.globalCompositeOperation = "source-over";
+    // context.globalCompositeOperation = "source-over";
   };
 
   const destroy = () => {

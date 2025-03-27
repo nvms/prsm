@@ -4,6 +4,31 @@ import { KeyboardKey } from "../../packages/input/devices/mappings/keyboard";
 
 export default testSuite(async ({ describe }) => {
   describe("keyboard", () => {
+    test("accepts a custom mapping", () => {
+      const customMapping = () => ({
+        [KeyboardKey.KeyA]: "RotateLeft",
+        [KeyboardKey.KeyD]: "Right",
+      });
+
+      const kb = keyboard();
+      kb.keyboard.useMapping(customMapping);
+
+      expect(kb.keyboard.getKey("RotateLeft")).toEqual({
+        pressed: false,
+        justPressed: false,
+        justReleased: false,
+      });
+
+      onKeyDown({ code: "RotateLeft", repeat: false } as KeyboardEvent);
+      keyboardUpdate();
+
+      expect(kb.keyboard.getKey("RotateLeft")).toEqual({
+        pressed: true,
+        justPressed: true,
+        justReleased: false,
+      });
+    });
+
     test("should return an object with a keyboard property containing methods", () => {
       const kb = keyboard();
       expect(typeof kb.keyboard).toBe("object");

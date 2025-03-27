@@ -14,7 +14,7 @@ const particleSystem = createParticleSystem({
 const emitter = particleSystem.createEmitter({
   x: canvas.width / 2,
   y: canvas.height / 2,
-  maxParticles: 100,
+  maxParticles: 120,
   rate: 0.1,
   lifetime: 1000,
   lifetimeVariation: 0.2,
@@ -49,8 +49,8 @@ const emitter = particleSystem.createEmitter({
       particleSystem.createEmitter({
         x: particle.x,
         y: particle.y,
-        maxParticles: 3,
-        lifetimeVariation: 0.2,
+        maxParticles: 4,
+        lifetimeVariation: 0.5,
         size: 3,
         sizeVariation: 2,
         colorStart: ["#FF0000", "#ff5100"],
@@ -72,8 +72,8 @@ const emitter = particleSystem.createEmitter({
   },
   onUpdate: (particle: Particle, state: WorldState) => {
     particle.size = Math.max(0, particle.size - 0.35);
-    const v = pulse(state.time.elapsed, 0.25, -1, 1);
-    particle.x += v * 1;
+    // const v = pulse(state.time.elapsed, 0.25, -1, 1);
+    // particle.x += v * 1;
   },
   onRemove: (particle: Particle, state: WorldState) => {},
 });
@@ -93,7 +93,7 @@ const fpsDrawSystem = (state: WorldState) => {
 };
 
 const particleCountSystem = (state: WorldState) => {
-  draw.text({ x: 10, y: 40 }, `Particle count: ${particleSystem.numParticles}`, "white");
+  draw.text({ x: 10, y: 40 }, `Particle count: ${particleSystem.numParticles}. Emitter count: ${emitter.particles.length}`, "white");
 };
 
 const particlePositionSystem = (state: WorldState) => {

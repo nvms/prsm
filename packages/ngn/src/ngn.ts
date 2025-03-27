@@ -36,7 +36,7 @@ export type ComponentInstance = () => {
 
 export type QueryConfig = Readonly<
   Partial<{
-    /** Matches entities as long as the entity has all of the components in the provided array. */
+    /** Matches entities as long as the entity has all the components in the provided array. */
     and: Component[];
     /** Matches entities as long as the entity has at least one of the components in the provided array. */
     or: Component[];
@@ -83,13 +83,15 @@ export type WorldState = {
   time: {
     /** The total elapsed time in seconds since the game loop started. */
     elapsed: number;
-    /** The time in milliseconds since the last frame. */
+    /** The time in milliseconds since the last frame, scaled by time.scale. */
     delta: number;
+    /** The raw, unscaled time in milliseconds since the last frame. */
+    rawDelta: number;
     /** The time in milliseconds since the last time the main loop was called. */
     loopDelta: number;
     /** The time in milliseconds of the last call to the main loop. */
     lastLoopDelta: number;
-    /** The time scale of the game loop. */
+    /** The timescale of the game loop. */
     scale: number;
     /** The current frames per second. */
     fps: number;
@@ -111,6 +113,7 @@ export const createWorld = () => {
     time: {
       elapsed: 0,
       delta: 0,
+      rawDelta: 0,
       loopDelta: 0,
       lastLoopDelta: 0,
       scale: 1,
@@ -135,6 +138,7 @@ export const createWorld = () => {
     let loopHandler = -1;
     const { time } = state;
     time.delta = 0;
+    time.rawDelta = 0;
     time.elapsed = 0;
     time.fps = 0;
     state[$running] = true;
@@ -183,23 +187,39 @@ export const createWorld = () => {
       xfps = xtimes.length;
       time.fps = xfps;
 
-      time.delta = now - then;
+      // Store the raw, unscaled delta time
+      time.rawDelta = now - then;
       then = now;
 
-      accumulator += time.delta * time.scale;
+      // Apply time scale to delta - this represents the simulation time that has passed
+      time.delta = time.rawDelta * time.scale;
+
+      // Use the raw delta for accumulation (behavior remains the same)
+      accumulator += time.rawDelta * time.scale;
 
       // Calculate the threshold for stepping the world based on the current frame rate
       const stepThreshold = 1000 / (time.fps || 60);
 
+      // Add a maximum number of iterations to prevent spiral of death
+      const maxSteps = 5; // Limit the catch-up to prevent freezing
+      let steps = 0;
+
       // Step the world only when the accumulated scaled time exceeds the threshold
-      while (accumulator >= stepThreshold) {
+      while (accumulator >= stepThreshold && steps < maxSteps) {
         time.loopDelta = now - time.lastLoopDelta;
         time.lastLoopDelta = now;
 
         state[$mainLoop](state);
         accumulator -= stepThreshold;
+        steps++;
       }
 
+      // If we hit the max steps, discard remaining accumulator time
+      if (steps >= maxSteps) {
+        accumulator = 0;
+      }
+
+      // Use the scaled delta for elapsed time calculation
       time.elapsed += time.delta * 0.001;
 
       loopHandler = raf(boundLoop);
@@ -541,7 +561,7 @@ export const createWorld = () => {
       destroy,
     });
 
-    // If we are focing a specific entity id, we need to migrate any
+    // If we are forcing a specific entity id, we need to migrate any
     // entity that might already occupy this space.
     if (spec.id !== undefined && state[$eMap][spec.id]) {
       migrateEntityId(spec.id, createId());
@@ -575,6 +595,16 @@ export const createWorld = () => {
 
     state[$eciMap][newId] = state[$eciMap][oldId];
     delete state[$eciMap][oldId];
+
+    // Update component-to-entity mappings, because otherwise queries that
+    // rely on state[$ceMap] would still reference the old entity ID,
+    // causing inconsistencies when trying to find entities with specific
+    // components after ID migration.
+    Object.keys(state[$ceMap]).forEach((componentName) => {
+      if (state[$ceMap][componentName].includes(oldId)) {
+        state[$ceMap][componentName] = state[$ceMap][componentName].map((id) => (id === oldId ? newId : id));
+      }
+    });
   }
 
   function getEntity(id: string): Entity {

@@ -20,4 +20,8 @@ export default testSuite(async ({ describe }) => {
   describe("mouse input", async ({ runTestSuite }) => {
     runTestSuite(import("./mouse.test.js"));
   });
+
+  describe("time scaling", async ({ runTestSuite }) => {
+    runTestSuite(import("./time.test.js"));
+  });
 });
