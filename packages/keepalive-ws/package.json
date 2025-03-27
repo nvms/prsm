@@ -33,6 +33,8 @@
     "build:server": "tsup src/server/index.ts --format cjs,esm --dts --clean --minify --out-dir dist/server",
     "build:client": "tsup src/client/index.ts --format cjs,esm --dts --clean --minify --out-dir dist/client",
     "build": "npm run build:prep && npm run build:server && npm run build:client",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "release": "bumpp package.json && npm publish --access public"
   },
   "keywords": [],
@@ -44,6 +46,7 @@
     "@types/ws": "^8.5.3",
     "bumpp": "^9.1.1",
     "tsup": "^8.2.4",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^3.0.9"
   }
 }

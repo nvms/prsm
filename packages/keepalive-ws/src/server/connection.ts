@@ -1,10 +1,11 @@
-import EventEmitter from "node:events";
+import { EventEmitter } from "node:events";
 import { IncomingMessage } from "node:http";
 import { WebSocket } from "ws";
-import { KeepAliveServerOptions } from ".";
-import { bufferToCommand, Command } from "./command";
+import { Command, parseCommand, stringifyCommand } from "../common/message";
+import { Status } from "../common/status";
 import { Latency } from "./latency";
 import { Ping } from "./ping";
+import { KeepAliveServerOptions } from "./";
 
 export class Connection extends EventEmitter {
   id: string;
@@ -14,6 +15,7 @@ export class Connection extends EventEmitter {
   ping: Ping;
   remoteAddress: string;
   connectionOptions: KeepAliveServerOptions;
+  status: Status = Status.ONLINE;
 
   constructor(
     socket: WebSocket,
@@ -30,7 +32,11 @@ export class Connection extends EventEmitter {
     this.startIntervals();
   }
 
-  startIntervals() {
+  get isDead(): boolean {
+    return !this.socket || this.socket.readyState !== WebSocket.OPEN;
+  }
+
+  startIntervals(): void {
     this.latency = new Latency();
     this.ping = new Ping();
 
@@ -50,6 +56,7 @@ export class Connection extends EventEmitter {
     this.ping.interval = setInterval(() => {
       if (!this.alive) {
         this.emit("close");
+        return;
       }
 
       this.alive = false;
@@ -57,32 +64,61 @@ export class Connection extends EventEmitter {
     }, this.connectionOptions.pingInterval);
   }
 
-  stopIntervals() {
+  stopIntervals(): void {
     clearInterval(this.latency.interval);
     clearInterval(this.ping.interval);
   }
 
-  applyListeners() {
+  applyListeners(): void {
     this.socket.on("close", () => {
+      this.status = Status.OFFLINE;
       this.emit("close");
     });
 
-    this.socket.on("message", (buffer: Buffer) => {
-      const command = bufferToCommand(buffer);
+    this.socket.on("error", (error) => {
+      this.emit("error", error);
+    });
 
-      if (command.command === "latency:response") {
-        this.latency.onResponse();
-        return;
-      } else if (command.command === "pong") {
-        this.alive = true;
-        return;
+    this.socket.on("message", (data: Buffer) => {
+      try {
+        const command = parseCommand(data.toString());
+
+        if (command.command === "latency:response") {
+          this.latency.onResponse();
+          return;
+        } else if (command.command === "pong") {
+          this.alive = true;
+          return;
+        }
+
+        this.emit("message", data);
+      } catch (error) {
+        this.emit("error", error);
       }
-
-      this.emit("message", buffer);
     });
   }
 
-  send(cmd: Command) {
-    this.socket.send(JSON.stringify(cmd));
+  send(cmd: Command): boolean {
+    if (this.isDead) return false;
+    
+    try {
+      this.socket.send(stringifyCommand(cmd));
+      return true;
+    } catch (error) {
+      this.emit("error", error);
+      return false;
+    }
+  }
+
+  close(): boolean {
+    if (this.isDead) return false;
+    
+    try {
+      this.socket.close();
+      return true;
+    } catch (error) {
+      this.emit("error", error);
+      return false;
+    }
   }
 }

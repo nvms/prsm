@@ -1,2 +1,3 @@
-export { KeepAliveClient } from "./client";
-export { KeepAliveServer } from "./server";
+export { KeepAliveClient, Status } from "./client";
+export { KeepAliveServer, WSContext } from "./server";
+export { CodeError } from "./common/codeerror";

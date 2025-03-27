@@ -1,99 +1,173 @@
-For a TCP-based, node-only solution with a similar API, see [duplex](https://github.com/node-prism/duplex).
-
 # keepalive-ws
 
-A command server and client for simplified WebSocket communication, with builtin ping and latency messaging.
+[![NPM version](https://img.shields.io/npm/v/@prsm/keepalive-ws?color=a1b858&label=)](https://www.npmjs.com/package/@prsm/keepalive-ws)
 
-Built for [grove](https://github.com/node-prism/grove), but works anywhere.
+A command server and client for simplified WebSocket communication, with built-in ping and latency messaging. Provides reliable, Promise-based communication with automatic reconnection and command queueing.
 
-### Server
+For a TCP-based, node-only solution with a similar API, see [duplex](https://github.com/node-prism/duplex).
 
-For node.
+## Features
+
+- **Promise-based API** - All operations return Promises for easy async/await usage
+- **Command queueing** - Commands are automatically queued when offline
+- **Reliable connections** - Robust error handling and reconnection
+- **Bidirectional communication** - Full-duplex WebSocket communication
+- **Latency monitoring** - Built-in ping/pong and latency measurement
+- **Room-based messaging** - Group connections into rooms for targeted broadcasts
+- **Lightweight** - Minimal dependencies
+
+## Server
 
 ```typescript
 import { KeepAliveServer, WSContext } from "@prsm/keepalive-ws/server";
 
-const ws = new KeepAliveServer({
-  // Where to mount this server and listen to messages.
-  path: "/",
-  // How often to send ping messages to connected clients.
-  pingInterval: 30_000,
-  // Calculate round-trip time and send latency updates
-  // to clients every 5s.
-  latencyInterval: 5_000,
+// Create a server instance
+const server = new KeepAliveServer({
+  port: 8080,
+  pingInterval: 30000,
+  latencyInterval: 5000,
 });
 
-ws.registerCommand(
-  "authenticate",
-  async (c: WSContext<{ token: string >}) => {
-    const { token } = c.payload;
-    // use c.payload to authenticate c.connection
-    return { ok: true, token };
-  },
-);
+// Register command handlers
+server.registerCommand("echo", async (context) => {
+  return `Echo: ${context.payload}`;
+});
 
-ws.registerCommand(
-  "throws",
-  async (c: WSContext<unknown>) => {
-    throw new Error("oops");
-  },
-);
+// Error handling
+server.registerCommand("throws", async () => {
+  throw new Error("Something went wrong");
+});
+
+// Room-based messaging
+server.registerCommand("join-room", async (context) => {
+  const { roomName } = context.payload;
+  server.addToRoom(roomName, context.connection);
+  server.broadcastRoom(roomName, "user-joined", {
+    id: context.connection.id
+  });
+  return { success: true };
+});
+
+// Broadcasting to all clients
+server.registerCommand("broadcast", async (context) => {
+  server.broadcast("announcement", context.payload);
+  return { sent: true };
+});
 ```
 
-Extended API:
-
-- Rooms
-
-  It can be useful to collect connections into rooms.
-
-  - `addToRoom(roomName: string, connection: Connection): void`
-  - `removeFromRoom(roomName: string, connection: Connection): void`
-  - `getRoom(roomName: string): Connection[]`
-  - `clearRoom(roomName: string): void`
-- Command middleware
-- Broadcasting to:
-  - all
-    - `broadcast(command: string, payload: any, connections?: Connection[]): void`
-  - all connections that share the same IP
-    - `broadcastRemoteAddress(c: Connection, command: string, payload: any): void`
-  - rooms
-    - `broadcastRoom(roomName: string, command: string, payload: any): void`
-
-### Client
-
-For the browser.
+## Client
 
 ```typescript
 import { KeepAliveClient } from "@prsm/keepalive-ws/client";
 
-const opts = {
-  // After 30s (+ maxLatency) of no ping, assume we've disconnected and attempt a
-  // reconnection if shouldReconnect is true.
-  // This number should be coordinated with the pingInterval from KeepAliveServer.
-  pingTimeout: 30_000,
-  // Try to reconnect whenever we are disconnected.
+// Create a client instance
+const client = new KeepAliveClient("ws://localhost:8080", {
+  pingTimeout: 30000,
+  maxLatency: 2000,
   shouldReconnect: true,
-  // This number, added to pingTimeout, is the maximum amount of time
-  // that can pass before the connection is considered closed.
-  // In this case, 32s.
-  maxLatency: 2_000,
-  // How often to try and connect during reconnection phase.
-  reconnectInterval: 2_000,
-  // How many times to try and reconnect before giving up.
+  reconnectInterval: 2000,
   maxReconnectAttempts: Infinity,
-};
-
-const ws = new KeepAliveClient("ws://localhost:8080", opts);
-
-const { ok, token } = await ws.command("authenticate", {
-  username: "user",
-  password: "pass",
 });
 
-const result = await ws.command("throws", {});
-// result is: { error: "oops" }
+// Connect to the server (returns a Promise)
+await client.connect();
 
-ws.on("latency", (e: CustomEvent<{ latency: number }>) => {
-  // e.detail.latency is round-trip time in ms
+// Using Promise-based API
+try {
+  const response = await client.command("echo", "Hello world", 5000);
+  console.log("Response:", response);
+} catch (error) {
+  console.error("Error:", error);
+}
+
+// Join a room
+await client.command("join-room", { roomName: "lobby" });
+
+// Listen for events
+client.on("user-joined", (event) => {
+  console.log("User joined:", event.detail.id);
 });
+
+// Monitor latency
+client.on("latency", (event) => {
+  console.log("Current latency:", event.detail.latency, "ms");
+});
+
+// Graceful shutdown
+await client.close();
+```
+
+## Extended Server API
+
+### Room Management
+```typescript
+// Add a connection to a room
+server.addToRoom("roomName", connection);
+
+// Remove a connection from a room
+server.removeFromRoom("roomName", connection);
+
+// Get all connections in a room
+const roomConnections = server.getRoom("roomName");
+
+// Clear all connections from a room
+server.clearRoom("roomName");
+```
+
+### Broadcasting
+```typescript
+// Broadcast to all connections
+server.broadcast("eventName", payload);
+
+// Broadcast to specific connections
+server.broadcast("eventName", payload, connections);
+
+// Broadcast to all connections except one
+server.broadcastExclude(connection, "eventName", payload);
+
+// Broadcast to all connections in a room
+server.broadcastRoom("roomName", "eventName", payload);
+
+// Broadcast to all connections in a room except one
+server.broadcastRoomExclude("roomName", "eventName", payload, connection);
+
+// Broadcast to all connections with the same IP
+server.broadcastRemoteAddress(connection, "eventName", payload);
+```
+
+### Middleware
+```typescript
+// Global middleware for all commands
+server.globalMiddlewares.push(async (context) => {
+  // Validate authentication, etc.
+  if (!isAuthenticated(context)) {
+    throw new Error("Unauthorized");
+  }
+});
+
+// Command-specific middleware
+server.registerCommand(
+  "protected-command",
+  async (context) => {
+    return "Protected data";
+  },
+  [
+    async (context) => {
+      // Command-specific validation
+      if (!hasPermission(context)) {
+        throw new Error("Forbidden");
+      }
+    }
+  ]
+);
+```
+
+## Graceful Shutdown
+
+```typescript
+// Close client connection
+await client.close();
+
+// Close server
+server.close();
 ```

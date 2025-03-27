@@ -1,50 +1,48 @@
+import { Command } from "../common/message";
+
 export class QueueItem {
-  value: any;
-  expireTime: number;
+  value: Command;
+  private expiration: number;
 
-  constructor(value: any, expiresIn: number) {
+  constructor(value: Command, expiresIn: number) {
     this.value = value;
-    this.expireTime = Date.now() + expiresIn;
+    this.expiration = Date.now() + expiresIn;
   }
 
-  get expiresIn() {
-    return this.expireTime - Date.now();
+  get expiresIn(): number {
+    return this.expiration - Date.now();
   }
 
-  get isExpired() {
-    return Date.now() > this.expireTime;
+  get isExpired(): boolean {
+    return Date.now() > this.expiration;
   }
 }
 
 export class Queue {
-  items: any[] = [];
+  private items: QueueItem[] = [];
 
-  add(item: any, expiresIn: number) {
+  add(item: Command, expiresIn: number): void {
     this.items.push(new QueueItem(item, expiresIn));
   }
 
-  get isEmpty() {
-    let i = this.items.length;
-
-    while (i--) {
-      if (this.items[i].isExpired) {
-        this.items.splice(i, 1);
-      } else {
-        return false;
-      }
-    }
-
-    return true;
+  get isEmpty(): boolean {
+    // Remove expired items first
+    this.items = this.items.filter((item) => !item.isExpired);
+    return this.items.length === 0;
   }
 
   pop(): QueueItem | null {
-    while (this.items.length) {
-      const item = this.items.shift() as QueueItem;
-      if (!item.isExpired) {
+    // Find the first non-expired item
+    while (this.items.length > 0) {
+      const item = this.items.shift();
+      if (item && !item.isExpired) {
         return item;
       }
     }
-
     return null;
+  }
+
+  clear(): void {
+    this.items = [];
   }
 }

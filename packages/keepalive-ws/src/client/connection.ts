@@ -1,261 +1,137 @@
+import { EventEmitter } from "node:events";
+import { WebSocket } from "ws";
+import { CodeError } from "../common/codeerror";
+import { Command, parseCommand, stringifyCommand } from "../common/message";
+import { Status } from "../common/status";
 import { IdManager } from "./ids";
-import { Queue, QueueItem } from "./queue";
+import { Queue } from "./queue";
 
-type Command = {
-  id?: number;
-  command: string;
-  payload?: any;
-};
-
-type LatencyPayload = {
+export type LatencyPayload = {
   /** Round trip time in milliseconds. */
   latency: number;
 };
 
-export declare interface Connection extends EventTarget {
-  addEventListener(
-    type: "message",
-    listener: (ev: CustomEvent) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a connection is made. */
-  addEventListener(
-    type: "connection",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Emits when a connection is made. */
-  addEventListener(
-    type: "connected",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Emits when a connection is made. */
-  addEventListener(
-    type: "connect",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a connection is closed. */
-  addEventListener(
-    type: "close",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Emits when a connection is closed. */
-  addEventListener(
-    type: "closed",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Emits when a connection is closed. */
-  addEventListener(
-    type: "disconnect",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-  /** Emits when a connection is closed. */
-  addEventListener(
-    type: "disconnected",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a reconnect event is successful. */
-  addEventListener(
-    type: "reconnect",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a reconnect fails after @see KeepAliveClientOptions.maxReconnectAttempts attempts. */
-  addEventListener(
-    type: "reconnectfailed",
-    listener: () => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a ping message is received from @see KeepAliveServer from `@prsm/keepalive-ws/server`. */
-  addEventListener(
-    type: "ping",
-    listener: (ev: CustomEventInit<{}>) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  /** Emits when a latency event is received from @see KeepAliveServer from `@prsm/keepalive-ws/server`. */
-  addEventListener(
-    type: "latency",
-    listener: (ev: CustomEventInit<LatencyPayload>) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-
-  addEventListener(
-    type: string,
-    listener: (ev: CustomEvent) => any,
-    options?: boolean | AddEventListenerOptions,
-  ): void;
-}
-
-export class Connection extends EventTarget {
-  socket: WebSocket;
+export class Connection extends EventEmitter {
+  socket: WebSocket | null = null;
   ids = new IdManager();
   queue = new Queue();
-  callbacks: { [id: number]: (error: Error | null, result?: any) => void } = {};
+  callbacks: { [id: number]: (result: any, error?: Error) => void } = {};
+  status: Status = Status.OFFLINE;
 
-  constructor(socket: WebSocket) {
+  constructor(socket: WebSocket | null) {
     super();
     this.socket = socket;
-    this.applyListeners();
-  }
-
-  /**
-   * Adds an event listener to the target.
-   * @param event The name of the event to listen for.
-   * @param listener The function to call when the event is fired.
-   * @param options An options object that specifies characteristics about the event listener.
-   */
-  on(
-    event: string,
-    listener: (ev: CustomEvent) => any,
-    options?: boolean | AddEventListenerOptions,
-  ) {
-    this.addEventListener(event, listener, options);
-  }
-
-  /**
-   * Removes the event listener previously registered with addEventListener.
-   * @param event A string that specifies the name of the event for which to remove an event listener.
-   * @param listener The event listener to be removed.
-   * @param options An options object that specifies characteristics about the event listener.
-   */
-  off(
-    event: string,
-    listener: (ev: CustomEvent) => any,
-    options?: boolean | AddEventListenerOptions,
-  ) {
-    this.removeEventListener(event, listener, options);
-  }
-
-  sendToken(cmd: Command, expiresIn: number) {
-    try {
-      this.socket.send(JSON.stringify(cmd));
-    } catch (e) {
-      this.queue.add(cmd, expiresIn);
+    if (socket) {
+      this.applyListeners();
     }
   }
 
-  applyListeners(reconnection = false) {
+  get isDead(): boolean {
+    return !this.socket || this.socket.readyState !== WebSocket.OPEN;
+  }
+
+  send(command: Command): boolean {
+    try {
+      if (!this.isDead) {
+        this.socket.send(stringifyCommand(command));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  sendWithQueue(command: Command, expiresIn: number): boolean {
+    const success = this.send(command);
+
+    if (!success) {
+      this.queue.add(command, expiresIn);
+    }
+
+    return success;
+  }
+
+  applyListeners(reconnection = false): void {
+    if (!this.socket) return;
+
     const drainQueue = () => {
       while (!this.queue.isEmpty) {
-        const item = this.queue.pop() as QueueItem;
-        this.sendToken(item.value, item.expiresIn);
+        const item = this.queue.pop();
+        if (item) {
+          this.send(item.value);
+        }
       }
     };
 
-    if (reconnection) drainQueue();
-
-    // @ts-ignore
-    this.socket.onopen = (socket: WebSocket, ev: Event): any => {
+    if (reconnection) {
       drainQueue();
-      this.dispatchEvent(new Event("connection"));
-      this.dispatchEvent(new Event("connected"));
-      this.dispatchEvent(new Event("connect"));
+    }
+
+    this.socket.onclose = () => {
+      this.status = Status.OFFLINE;
+      this.emit("close");
+      this.emit("disconnect");
     };
 
-    this.socket.onclose = (event: CloseEvent) => {
-      this.dispatchEvent(new Event("close"));
-      this.dispatchEvent(new Event("closed"));
-      this.dispatchEvent(new Event("disconnected"));
-      this.dispatchEvent(new Event("disconnect"));
+    this.socket.onerror = (error) => {
+      this.emit("error", error);
     };
 
-    this.socket.onmessage = async (event: MessageEvent) => {
+    this.socket.onmessage = (event: any) => {
       try {
-        const data = JSON.parse(event.data);
+        const data = parseCommand(event.data as string);
 
-        this.dispatchEvent(new CustomEvent("message", { detail: data }));
+        // Emit the raw message event
+        this.emit("message", data);
 
+        // Handle special system commands
         if (data.command === "latency:request") {
-          this.dispatchEvent(
-            new CustomEvent<LatencyPayload>("latency:request", {
-              detail: { latency: data.payload.latency ?? undefined },
-            }),
-          );
-          this.command(
-            "latency:response",
-            { latency: data.payload.latency ?? undefined },
-            null,
-          );
+          this.emit("latency:request", data.payload);
+          this.command("latency:response", data.payload, null);
         } else if (data.command === "latency") {
-          this.dispatchEvent(
-            new CustomEvent<LatencyPayload>("latency", {
-              detail: { latency: data.payload ?? undefined },
-            }),
-          );
+          this.emit("latency", data.payload);
         } else if (data.command === "ping") {
-          this.dispatchEvent(new CustomEvent("ping", {}));
+          this.emit("ping");
           this.command("pong", {}, null);
         } else {
-          this.dispatchEvent(
-            new CustomEvent(data.command, { detail: data.payload }),
-          );
+          // Emit command-specific event
+          this.emit(data.command, data.payload);
         }
 
-        if (this.callbacks[data.id]) {
-          this.callbacks[data.id](null, data.payload);
+        // Resolve any pending command promises
+        if (data.id !== undefined && this.callbacks[data.id]) {
+          // Always resolve with the payload, even if it contains an error
+          // This allows the test to check for error properties in the result
+          this.callbacks[data.id](data.payload);
         }
-      } catch (e) {
-        this.dispatchEvent(new Event("error"));
+      } catch (error) {
+        this.emit("error", error);
       }
     };
   }
 
-  async command(
+  command(
     command: string,
     payload: any,
-    expiresIn: number = 30_000,
-    callback: Function | null = null,
-  ) {
+    expiresIn: number | null = 30_000,
+    callback?: (result: any, error?: Error) => void,
+  ): Promise<any> | null {
     const id = this.ids.reserve();
-    const cmd = { id, command, payload: payload ?? {} };
+    const cmd: Command = { id, command, payload: payload ?? {} };
 
-    this.sendToken(cmd, expiresIn);
+    this.sendWithQueue(cmd, expiresIn || 30000);
 
     if (expiresIn === null) {
       this.ids.release(id);
-      delete this.callbacks[id];
       return null;
     }
 
-    const response = this.createResponsePromise(id);
-    const timeout = this.createTimeoutPromise(id, expiresIn);
-
-    if (typeof callback === "function") {
-      const ret = await Promise.race([response, timeout]);
-      callback(ret);
-      return ret;
-    } else {
-      return Promise.race([response, timeout]);
-    }
-  }
-
-  createTimeoutPromise(id: number, expiresIn: number) {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
+    const responsePromise = new Promise<any>((resolve, reject) => {
+      this.callbacks[id] = (result: any, error?: Error) => {
         this.ids.release(id);
         delete this.callbacks[id];
-        reject(new Error(`Command ${id} timed out after ${expiresIn}ms.`));
-      }, expiresIn);
-    });
-  }
 
-  createResponsePromise(id: number) {
-    return new Promise((resolve, reject) => {
-      this.callbacks[id] = (error: Error | null, result?: any) => {
-        this.ids.release(id);
-        delete this.callbacks[id];
         if (error) {
           reject(error);
         } else {
@@ -263,5 +139,42 @@ export class Connection extends EventTarget {
         }
       };
     });
+
+    const timeoutPromise = new Promise<any>((_, reject) => {
+      setTimeout(() => {
+        if (this.callbacks[id]) {
+          this.ids.release(id);
+          delete this.callbacks[id];
+          reject(
+            new CodeError(
+              `Command timed out after ${expiresIn}ms.`,
+              "ETIMEOUT",
+              "TimeoutError",
+            ),
+          );
+        }
+      }, expiresIn);
+    });
+
+    if (typeof callback === "function") {
+      Promise.race([responsePromise, timeoutPromise])
+        .then((result) => callback(result))
+        .catch((error) => callback(null, error));
+
+      return responsePromise;
+    }
+
+    return Promise.race([responsePromise, timeoutPromise]);
+  }
+
+  close(): boolean {
+    if (this.isDead) return false;
+
+    try {
+      this.socket.close();
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }

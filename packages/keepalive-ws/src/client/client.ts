@@ -1,6 +1,12 @@
+import { EventEmitter } from "node:events";
+import { WebSocket } from "ws";
+import { CodeError } from "../common/codeerror";
+import { Status } from "../common/status";
 import { Connection } from "./connection";
 
-type KeepAliveClientOptions = Partial<{
+export { Status } from "../common/status";
+
+export type KeepAliveClientOptions = Partial<{
   /**
    * The number of milliseconds to wait before considering the connection closed due to inactivity.
    * When this happens, the connection will be closed and a reconnect will be attempted if @see KeepAliveClientOptions.shouldReconnect is true.
@@ -36,58 +42,129 @@ type KeepAliveClientOptions = Partial<{
   maxReconnectAttempts: number;
 }>;
 
-const defaultOptions = (opts: KeepAliveClientOptions = {}) => {
-  opts.pingTimeout = opts.pingTimeout ?? 30_000;
-  opts.maxLatency = opts.maxLatency ?? 2_000;
-  opts.shouldReconnect = opts.shouldReconnect ?? true;
-  opts.reconnectInterval = opts.reconnectInterval ?? 2_000;
-  opts.maxReconnectAttempts = opts.maxReconnectAttempts ?? Infinity;
-  return opts;
-};
-
-export class KeepAliveClient extends EventTarget {
+export class KeepAliveClient extends EventEmitter {
   connection: Connection;
   url: string;
-  socket: WebSocket;
+  socket: WebSocket | null = null;
   pingTimeout: ReturnType<typeof setTimeout>;
-  options: KeepAliveClientOptions;
+  options: Required<KeepAliveClientOptions>;
   isReconnecting = false;
+  private _status: Status = Status.OFFLINE;
 
   constructor(url: string, opts: KeepAliveClientOptions = {}) {
     super();
     this.url = url;
-    this.socket = new WebSocket(url);
-    this.connection = new Connection(this.socket);
-    this.options = defaultOptions(opts);
-    this.applyListeners();
+    this.connection = new Connection(null);
+    this.options = {
+      pingTimeout: opts.pingTimeout ?? 30_000,
+      maxLatency: opts.maxLatency ?? 2_000,
+      shouldReconnect: opts.shouldReconnect ?? true,
+      reconnectInterval: opts.reconnectInterval ?? 2_000,
+      maxReconnectAttempts: opts.maxReconnectAttempts ?? Infinity,
+    };
+
+    this.setupConnectionEvents();
   }
 
-  get on() {
-    return this.connection.addEventListener.bind(this.connection);
+  get status(): Status {
+    return this._status;
   }
 
-  applyListeners() {
-    this.connection.addEventListener("connection", () => {
-      this.heartbeat();
+  private setupConnectionEvents(): void {
+    // Forward relevant events from connection to client
+    this.connection.on("message", (data) => {
+      this.emit("message", data);
     });
 
-    this.connection.addEventListener("close", () => {
+    this.connection.on("close", () => {
+      this._status = Status.OFFLINE;
+      this.emit("close");
       this.reconnect();
     });
 
-    this.connection.addEventListener("ping", () => {
-      this.heartbeat();
+    this.connection.on("error", (error) => {
+      this.emit("error", error);
     });
 
-    this.connection.addEventListener(
-      "message",
-      (ev: CustomEventInit<unknown>) => {
-        this.dispatchEvent(new CustomEvent("message", ev));
-      },
-    );
+    this.connection.on("ping", () => {
+      this.heartbeat();
+      this.emit("ping");
+    });
+
+    this.connection.on("latency", (data) => {
+      this.emit("latency", data);
+    });
   }
 
-  heartbeat() {
+  /**
+   * Connect to the WebSocket server.
+   * @returns A promise that resolves when the connection is established.
+   */
+  connect(): Promise<void> {
+    if (this._status === Status.ONLINE) {
+      return Promise.resolve();
+    }
+
+    if (
+      this._status === Status.CONNECTING ||
+      this._status === Status.RECONNECTING
+    ) {
+      return new Promise((resolve, reject) => {
+        const onConnect = () => {
+          this.removeListener("connect", onConnect);
+          this.removeListener("error", onError);
+          resolve();
+        };
+
+        const onError = (error: Error) => {
+          this.removeListener("connect", onConnect);
+          this.removeListener("error", onError);
+          reject(error);
+        };
+
+        this.once("connect", onConnect);
+        this.once("error", onError);
+      });
+    }
+
+    this._status = Status.CONNECTING;
+
+    return new Promise((resolve, reject) => {
+      try {
+        // Create a new WebSocket connection
+        this.socket = new WebSocket(this.url);
+
+        // Set up a direct onopen handler to ensure we catch the connection event
+        this.socket.onopen = () => {
+          this._status = Status.ONLINE;
+          this.connection.socket = this.socket;
+          this.connection.status = Status.ONLINE;
+          this.connection.applyListeners();
+          this.heartbeat();
+
+          this.emit("connect");
+          resolve();
+        };
+
+        // Set up a direct onerror handler for immediate connection errors
+        this.socket.onerror = (error) => {
+          this._status = Status.OFFLINE;
+          reject(
+            new CodeError(
+              "WebSocket connection error",
+              "ECONNECTION",
+              "ConnectionError",
+            ),
+          );
+        };
+      } catch (error) {
+        this._status = Status.OFFLINE;
+        reject(error);
+      }
+    });
+  }
+
+  heartbeat(): void {
     clearTimeout(this.pingTimeout);
 
     this.pingTimeout = setTimeout(() => {
@@ -100,23 +177,45 @@ export class KeepAliveClient extends EventTarget {
   /**
    * Disconnect the client from the server.
    * The client will not attempt to reconnect.
-   * To reconnect, create a new KeepAliveClient.
+   * @returns A promise that resolves when the connection is closed.
    */
-  disconnect() {
+  close(): Promise<void> {
     this.options.shouldReconnect = false;
 
-    if (this.socket) {
-      this.socket.close();
+    if (this._status === Status.OFFLINE) {
+      return Promise.resolve();
     }
 
-    clearTimeout(this.pingTimeout);
+    return new Promise((resolve) => {
+      const onClose = () => {
+        this.removeListener("close", onClose);
+        this._status = Status.OFFLINE;
+        resolve();
+      };
+
+      this.once("close", onClose);
+
+      clearTimeout(this.pingTimeout);
+
+      if (this.socket) {
+        this.socket.close();
+      }
+    });
   }
 
-  private async reconnect() {
+  /**
+   * @deprecated Use close() instead
+   */
+  disconnect(): Promise<void> {
+    return this.close();
+  }
+
+  private reconnect(): void {
     if (!this.options.shouldReconnect || this.isReconnecting) {
       return;
     }
 
+    this._status = Status.RECONNECTING;
     this.isReconnecting = true;
 
     let attempt = 1;
@@ -124,11 +223,14 @@ export class KeepAliveClient extends EventTarget {
     if (this.socket) {
       try {
         this.socket.close();
-      } catch (e) {}
+      } catch (e) {
+        // Ignore errors during close
+      }
     }
 
     const connect = () => {
       this.socket = new WebSocket(this.url);
+
       this.socket.onerror = () => {
         attempt++;
 
@@ -136,37 +238,56 @@ export class KeepAliveClient extends EventTarget {
           setTimeout(connect, this.options.reconnectInterval);
         } else {
           this.isReconnecting = false;
-
-          this.connection.dispatchEvent(new Event("reconnectfailed"));
-          this.connection.dispatchEvent(new Event("reconnectionfailed"));
+          this._status = Status.OFFLINE;
+          this.emit("reconnectfailed");
         }
       };
 
       this.socket.onopen = () => {
         this.isReconnecting = false;
+        this._status = Status.ONLINE;
         this.connection.socket = this.socket;
-
+        this.connection.status = Status.ONLINE;
         this.connection.applyListeners(true);
+        this.heartbeat();
 
-        this.connection.dispatchEvent(new Event("connection"));
-        this.connection.dispatchEvent(new Event("connected"));
-        this.connection.dispatchEvent(new Event("connect"));
-
-        this.connection.dispatchEvent(new Event("reconnection"));
-        this.connection.dispatchEvent(new Event("reconnected"));
-        this.connection.dispatchEvent(new Event("reconnect"));
+        this.emit("connect");
+        this.emit("reconnect");
       };
     };
 
     connect();
   }
 
-  async command(
+  /**
+   * Send a command to the server and wait for a response.
+   * @param command The command name to send
+   * @param payload The payload to send with the command
+   * @param expiresIn Timeout in milliseconds
+   * @param callback Optional callback function
+   * @returns A promise that resolves with the command result
+   */
+  command(
     command: string,
     payload?: any,
-    expiresIn?: number,
-    callback?: Function,
-  ) {
+    expiresIn: number = 30000,
+    callback?: (result: any, error?: Error) => void,
+  ): Promise<any> {
+    // Ensure we're connected before sending commands
+    if (this._status !== Status.ONLINE) {
+      return this.connect()
+        .then(() =>
+          this.connection.command(command, payload, expiresIn, callback),
+        )
+        .catch((error) => {
+          if (callback) {
+            callback(null, error);
+            return Promise.reject(error);
+          }
+          return Promise.reject(error);
+        });
+    }
+
     return this.connection.command(command, payload, expiresIn, callback);
   }
 }
