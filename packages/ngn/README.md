@@ -11,6 +11,7 @@ An ECS framework (and robust input system) for the web.
     * [Entities](#entities)
     * [Components](#components)
       * [Extending components](#extending-components)
+    * [Scene Management](#scene-management)
   * [Extras](#extras)
     * [Keyboard, mouse and gamepad input](#keyboard-mouse-and-gamepad-input)
       * [Input system](#input-system)
@@ -484,6 +485,37 @@ mortals((results) => {
   // if gameover, or something
   stop();
   ```
+
+### Scene Management
+
+NGN doesn't enforce any specific scene management pattern, giving you the freedom to implement what works best for your game. The simplest approach is to use separate worlds as scenes:
+
+```typescript
+// Create different worlds for different scenes
+const menuScene = createWorld();
+const gameScene = createWorld();
+const pauseScene = createWorld();
+
+// Configure each scene
+menuScene.defineMain(() => { /* menu logic */ });
+gameScene.defineMain(() => { /* game logic */ });
+
+// Track current scene
+let currentScene = menuScene;
+
+// Switch scenes
+function switchToScene(newScene) {
+  currentScene.stop();
+  currentScene = newScene;
+  currentScene.start();
+}
+
+// Start with menu
+menuScene.start();
+
+// Later, switch to game
+switchToScene(gameScene);
+```
 
 - **`World > step`**
 
