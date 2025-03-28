@@ -30,6 +30,7 @@ An ECS framework (and robust input system) for the web.
 # Comprehensive sample
 
 ```typescript
+import merge from "lodash/merge";
 import { createWorld, type WorldState } from "@prsm/ngn";
 import {
   inputSystem,
@@ -41,7 +42,7 @@ import {
 
 // Create a mapping with unique button/key names.
 const MyMapping = (): GamepadMapping => {
-  return Object.assign(SCUFVantage2(), {
+  return merge(SCUFVantage2(), {
     axes: {
       2: "LookHorizontal",
       3: "LookVertical",
