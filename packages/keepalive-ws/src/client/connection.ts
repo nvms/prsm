@@ -115,7 +115,7 @@ export class Connection extends EventEmitter {
     command: string,
     payload: any,
     expiresIn: number | null = 30_000,
-    callback?: (result: any, error?: Error) => void,
+    callback?: (result: any, error?: Error) => void
   ): Promise<any> | null {
     const id = this.ids.reserve();
     const cmd: Command = { id, command, payload: payload ?? {} };
@@ -142,17 +142,17 @@ export class Connection extends EventEmitter {
 
     const timeoutPromise = new Promise<any>((_, reject) => {
       setTimeout(() => {
-        if (this.callbacks[id]) {
-          this.ids.release(id);
-          delete this.callbacks[id];
-          reject(
-            new CodeError(
-              `Command timed out after ${expiresIn}ms.`,
-              "ETIMEOUT",
-              "TimeoutError",
-            ),
-          );
-        }
+        if (!this.callbacks[id]) return;
+
+        this.ids.release(id);
+        delete this.callbacks[id];
+        reject(
+          new CodeError(
+            `Command timed out after ${expiresIn}ms.`,
+            "ETIMEOUT",
+            "TimeoutError"
+          )
+        );
       }, expiresIn);
     });
 

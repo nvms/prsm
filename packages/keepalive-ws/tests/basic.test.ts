@@ -2,13 +2,12 @@ import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { KeepAliveClient, Status } from "../src/client/client";
 import { KeepAliveServer } from "../src/server/index";
 
-const createTestServer = (port: number) => {
-  return new KeepAliveServer({
+const createTestServer = (port: number) =>
+  new KeepAliveServer({
     port,
     pingInterval: 1000,
     latencyInterval: 500,
   });
-};
 
 describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
   const port = 8124;
@@ -48,18 +47,17 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
   });
 
   test("client-server connection should be online", async () => {
-    await server.registerCommand("echo", async (context) => {
-      return context.payload;
-    });
+    await server.registerCommand("echo", async (context) => context.payload);
 
     await client.connect();
     expect(client.status).toBe(Status.ONLINE);
   }, 10000);
 
   test("simple echo command", async () => {
-    await server.registerCommand("echo", async (context) => {
-      return `Echo: ${context.payload}`;
-    });
+    await server.registerCommand(
+      "echo",
+      async (context) => `Echo: ${context.payload}`
+    );
 
     await client.connect();
 
@@ -68,9 +66,7 @@ describe("Basic KeepAliveClient and KeepAliveServer Tests", () => {
   }, 10000);
 
   test("connect should resolve when already connected", async () => {
-    await server.registerCommand("echo", async (context) => {
-      return context.payload;
-    });
+    await server.registerCommand("echo", async (context) => context.payload);
 
     await client.connect();
     expect(client.status).toBe(Status.ONLINE);

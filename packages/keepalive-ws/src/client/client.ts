@@ -73,7 +73,21 @@ export class KeepAliveClient extends EventEmitter {
   private setupConnectionEvents(): void {
     // Forward relevant events from connection to client
     this.connection.on("message", (data) => {
+      // Forward the raw message event
       this.emit("message", data);
+
+      // Also forward the specific command event if it's not a system event
+      // (System events like ping/latency are handled separately below)
+      const systemCommands = [
+        "ping",
+        "pong",
+        "latency",
+        "latency:request",
+        "latency:response",
+      ];
+      if (data.command && !systemCommands.includes(data.command)) {
+        this.emit(data.command, data.payload);
+      }
     });
 
     this.connection.on("close", () => {
@@ -150,8 +164,8 @@ export class KeepAliveClient extends EventEmitter {
             new CodeError(
               "WebSocket connection error",
               "ECONNECTION",
-              "ConnectionError",
-            ),
+              "ConnectionError"
+            )
           );
         };
       } catch (error) {
@@ -233,11 +247,12 @@ export class KeepAliveClient extends EventEmitter {
 
         if (attempt <= this.options.maxReconnectAttempts) {
           setTimeout(connect, this.options.reconnectInterval);
-        } else {
-          this.isReconnecting = false;
-          this._status = Status.OFFLINE;
-          this.emit("reconnectfailed");
+          return;
         }
+
+        this.isReconnecting = false;
+        this._status = Status.OFFLINE;
+        this.emit("reconnectfailed");
       };
 
       this.socket.onopen = () => {
@@ -268,13 +283,13 @@ export class KeepAliveClient extends EventEmitter {
     command: string,
     payload?: any,
     expiresIn: number = 30000,
-    callback?: (result: any, error?: Error) => void,
+    callback?: (result: any, error?: Error) => void
   ): Promise<any> {
     // Ensure we're connected before sending commands
     if (this._status !== Status.ONLINE) {
       return this.connect()
         .then(() =>
-          this.connection.command(command, payload, expiresIn, callback),
+          this.connection.command(command, payload, expiresIn, callback)
         )
         .catch((error) => {
           if (callback) {

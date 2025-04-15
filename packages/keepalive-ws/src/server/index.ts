@@ -1,5 +1,11 @@
 import { IncomingMessage } from "node:http";
 import { ServerOptions, WebSocket, WebSocketServer } from "ws";
+import type { RedisOptions } from "ioredis";
+import {
+  RoomManager,
+  InMemoryRoomManager,
+  RedisRoomManager,
+} from "./room-manager";
 import { CodeError } from "../common/codeerror";
 import { Command, parseCommand } from "../common/message";
 import { Status } from "../common/status";
@@ -34,6 +40,16 @@ export type KeepAliveServerOptions = ServerOptions & {
    * @default 5000
    */
   latencyInterval?: number;
+
+  /**
+   * Room backend type: "memory" (default) or "redis"
+   */
+  roomBackend?: "memory" | "redis";
+
+  /**
+   * Redis options, required if roomBackend is "redis"
+   */
+  redisOptions?: RedisOptions;
 };
 
 export class KeepAliveServer extends WebSocketServer {
@@ -44,7 +60,7 @@ export class KeepAliveServer extends WebSocketServer {
   } = {};
   globalMiddlewares: SocketMiddleware[] = [];
   middlewares: { [key: string]: SocketMiddleware[] } = {};
-  rooms: { [roomName: string]: Set<string> } = {};
+  roomManager: RoomManager;
   serverOptions: ServerOptions & {
     pingInterval: number;
     latencyInterval: number;
@@ -67,6 +83,23 @@ export class KeepAliveServer extends WebSocketServer {
       latencyInterval: opts.latencyInterval ?? 5_000,
     };
 
+    // Room manager selection
+    if (opts.roomBackend === "redis") {
+      if (!opts.redisOptions) {
+        throw new Error(
+          "redisOptions must be provided when roomBackend is 'redis'"
+        );
+      }
+      this.roomManager = new RedisRoomManager(
+        opts.redisOptions,
+        (id: string) => this.connections[id]
+      );
+    } else {
+      this.roomManager = new InMemoryRoomManager(
+        (id: string) => this.connections[id]
+      );
+    }
+
     this.on("listening", () => {
       this._listening = true;
       this.status = Status.ONLINE;
@@ -80,14 +113,14 @@ export class KeepAliveServer extends WebSocketServer {
     this.applyListeners();
   }
 
-  private cleanupConnection(connection: Connection): void {
+  private async cleanupConnection(connection: Connection): Promise<void> {
     connection.stopIntervals();
     delete this.connections[connection.id];
 
     if (this.remoteAddressToConnections[connection.remoteAddress]) {
       this.remoteAddressToConnections[connection.remoteAddress] =
         this.remoteAddressToConnections[connection.remoteAddress].filter(
-          (conn) => conn.id !== connection.id,
+          (conn) => conn.id !== connection.id
         );
 
       if (
@@ -98,9 +131,7 @@ export class KeepAliveServer extends WebSocketServer {
     }
 
     // Remove from all rooms
-    Object.keys(this.rooms).forEach((roomName) => {
-      this.rooms[roomName].delete(connection.id);
-    });
+    await this.roomManager.removeFromAllRooms(connection);
   }
 
   private applyListeners(): void {
@@ -113,13 +144,13 @@ export class KeepAliveServer extends WebSocketServer {
       }
 
       this.remoteAddressToConnections[connection.remoteAddress].push(
-        connection,
+        connection
       );
 
       this.emit("connected", connection);
 
-      connection.on("close", () => {
-        this.cleanupConnection(connection);
+      connection.on("close", async () => {
+        await this.cleanupConnection(connection);
         this.emit("close", connection);
       });
 
@@ -137,7 +168,7 @@ export class KeepAliveServer extends WebSocketServer {
               command.id,
               command.command,
               command.payload,
-              connection,
+              connection
             );
           }
         } catch (error) {
@@ -172,7 +203,7 @@ export class KeepAliveServer extends WebSocketServer {
   broadcastRemoteAddress(
     connection: Connection,
     command: string,
-    payload: any,
+    payload: any
   ): void {
     const cmd: Command = { command, payload };
     const connections =
@@ -194,47 +225,30 @@ export class KeepAliveServer extends WebSocketServer {
    * Given a roomName, a command and a payload, broadcasts to all Connections
    * that are in the room.
    */
-  broadcastRoom(roomName: string, command: string, payload: any): void {
-    const cmd: Command = { command, payload };
-    const room = this.rooms[roomName];
-
-    if (!room) return;
-
-    room.forEach((connectionId) => {
-      const connection = this.connections[connectionId];
-      if (connection) {
-        connection.send(cmd);
-      }
-    });
+  async broadcastRoom(
+    roomName: string,
+    command: string,
+    payload: any
+  ): Promise<void> {
+    await this.roomManager.broadcastRoom(roomName, command, payload);
   }
 
   /**
    * Given a roomName, command, payload, and Connection OR Connection[], broadcasts to all Connections
    * that are in the room except the provided Connection(s).
    */
-  broadcastRoomExclude(
+  async broadcastRoomExclude(
     roomName: string,
     command: string,
     payload: any,
-    connection: Connection | Connection[],
-  ): void {
-    const cmd: Command = { command, payload };
-    const room = this.rooms[roomName];
-
-    if (!room) return;
-
-    const excludeIds = Array.isArray(connection)
-      ? connection.map((c) => c.id)
-      : [connection.id];
-
-    room.forEach((connectionId) => {
-      if (!excludeIds.includes(connectionId)) {
-        const conn = this.connections[connectionId];
-        if (conn) {
-          conn.send(cmd);
-        }
-      }
-    });
+    connection: Connection | Connection[]
+  ): Promise<void> {
+    await this.roomManager.broadcastRoomExclude(
+      roomName,
+      command,
+      payload,
+      connection
+    );
   }
 
   /**
@@ -244,7 +258,7 @@ export class KeepAliveServer extends WebSocketServer {
   broadcastExclude(
     connection: Connection,
     command: string,
-    payload: any,
+    payload: any
   ): void {
     const cmd: Command = { command, payload };
 
@@ -258,46 +272,39 @@ export class KeepAliveServer extends WebSocketServer {
   /**
    * Add a connection to a room
    */
-  addToRoom(roomName: string, connection: Connection): void {
-    this.rooms[roomName] = this.rooms[roomName] ?? new Set();
-    this.rooms[roomName].add(connection.id);
+  async addToRoom(roomName: string, connection: Connection): Promise<void> {
+    await this.roomManager.addToRoom(roomName, connection);
   }
 
   /**
    * Remove a connection from a room
    */
-  removeFromRoom(roomName: string, connection: Connection): void {
-    if (!this.rooms[roomName]) return;
-    this.rooms[roomName].delete(connection.id);
+  async removeFromRoom(
+    roomName: string,
+    connection: Connection
+  ): Promise<void> {
+    await this.roomManager.removeFromRoom(roomName, connection);
   }
 
   /**
    * Remove a connection from all rooms
    */
-  removeFromAllRooms(connection: Connection | string): void {
-    const connectionId =
-      typeof connection === "string" ? connection : connection.id;
-
-    Object.keys(this.rooms).forEach((roomName) => {
-      this.rooms[roomName].delete(connectionId);
-    });
+  async removeFromAllRooms(connection: Connection | string): Promise<void> {
+    await this.roomManager.removeFromAllRooms(connection);
   }
 
   /**
    * Returns all connections in a room
    */
-  getRoom(roomName: string): Connection[] {
-    const ids = this.rooms[roomName] || new Set();
-    return Array.from(ids)
-      .map((id) => this.connections[id])
-      .filter(Boolean);
+  async getRoom(roomName: string): Promise<Connection[]> {
+    return this.roomManager.getRoom(roomName);
   }
 
   /**
    * Clear all connections from a room
    */
-  clearRoom(roomName: string): void {
-    this.rooms[roomName] = new Set();
+  async clearRoom(roomName: string): Promise<void> {
+    await this.roomManager.clearRoom(roomName);
   }
 
   /**
@@ -306,7 +313,7 @@ export class KeepAliveServer extends WebSocketServer {
   async registerCommand<T = any>(
     command: string,
     callback: (context: WSContext<any>) => Promise<T> | T,
-    middlewares: SocketMiddleware[] = [],
+    middlewares: SocketMiddleware[] = []
   ): Promise<void> {
     this.commands[command] = callback;
 
@@ -322,7 +329,7 @@ export class KeepAliveServer extends WebSocketServer {
    */
   prependMiddlewareToCommand(
     command: string,
-    middlewares: SocketMiddleware[],
+    middlewares: SocketMiddleware[]
   ): void {
     if (middlewares.length) {
       this.middlewares[command] = this.middlewares[command] || [];
@@ -335,7 +342,7 @@ export class KeepAliveServer extends WebSocketServer {
    */
   appendMiddlewareToCommand(
     command: string,
-    middlewares: SocketMiddleware[],
+    middlewares: SocketMiddleware[]
   ): void {
     if (middlewares.length) {
       this.middlewares[command] = this.middlewares[command] || [];
@@ -350,7 +357,7 @@ export class KeepAliveServer extends WebSocketServer {
     id: number,
     command: string,
     payload: any,
-    connection: Connection,
+    connection: Connection
   ): Promise<void> {
     const context = new WSContext(this, connection, payload);
 
@@ -359,7 +366,7 @@ export class KeepAliveServer extends WebSocketServer {
         throw new CodeError(
           `Command [${command}] not found.`,
           "ENOTFOUND",
-          "CommandError",
+          "CommandError"
         );
       }
 

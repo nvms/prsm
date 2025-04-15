@@ -20,7 +20,7 @@ export class Connection extends EventEmitter {
   constructor(
     socket: WebSocket,
     req: IncomingMessage,
-    options: KeepAliveServerOptions,
+    options: KeepAliveServerOptions
   ) {
     super();
     this.socket = socket;

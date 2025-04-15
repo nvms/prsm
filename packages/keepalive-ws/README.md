@@ -26,6 +26,9 @@ const server = new KeepAliveServer({
   port: 8080,
   pingInterval: 30000,
   latencyInterval: 5000,
+  // Multi-instance room support (optional):
+  // roomBackend: "redis",
+  // redisOptions: { host: "localhost", port: 6379 }
 });
 
 // Register command handlers
@@ -41,8 +44,8 @@ server.registerCommand("throws", async () => {
 // Room-based messaging
 server.registerCommand("join-room", async (context) => {
   const { roomName } = context.payload;
-  server.addToRoom(roomName, context.connection);
-  server.broadcastRoom(roomName, "user-joined", {
+  await server.addToRoom(roomName, context.connection);
+  await server.broadcastRoom(roomName, "user-joined", {
     id: context.connection.id
   });
   return { success: true };
@@ -101,17 +104,17 @@ await client.close();
 
 ### Room Management
 ```typescript
-// Add a connection to a room
-server.addToRoom("roomName", connection);
+// Add a connection to a room (async)
+await server.addToRoom("roomName", connection);
 
-// Remove a connection from a room
-server.removeFromRoom("roomName", connection);
+// Remove a connection from a room (async)
+await server.removeFromRoom("roomName", connection);
 
-// Get all connections in a room
-const roomConnections = server.getRoom("roomName");
+// Get all connections in a room (async)
+const roomConnections = await server.getRoom("roomName");
 
-// Clear all connections from a room
-server.clearRoom("roomName");
+// Clear all connections from a room (async)
+await server.clearRoom("roomName");
 ```
 
 ### Broadcasting
@@ -161,6 +164,22 @@ server.registerCommand(
   ]
 );
 ```
+
+## Multi-Instance Room Support
+
+To enable multi-instance room support (so rooms are shared across all server instances), configure the server with `roomBackend: "redis"` and provide `redisOptions`:
+
+```typescript
+import { KeepAliveServer } from "@prsm/keepalive-ws/server";
+
+const server = new KeepAliveServer({
+  port: 8080,
+  roomBackend: "redis",
+  redisOptions: { host: "localhost", port: 6379 }
+});
+```
+
+All room management methods become async and must be awaited.
 
 ## Graceful Shutdown
 
