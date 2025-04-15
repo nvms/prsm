@@ -1,2 +1,6 @@
 node_modules
 src
+tests
+docker-compose.yml
+bump.config.ts
+bun.lockb
