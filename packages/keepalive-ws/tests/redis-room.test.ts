@@ -340,4 +340,55 @@ describe("KeepAliveServer with Redis room backend", () => {
 
     if (clientC.status === Status.ONLINE) await clientC.close();
   }, 10000);
+
+  test("getRoom correctly retrieves all connections in a room", async () => {
+    await server.registerCommand("join-room", async (context) => {
+      await server.addToRoom(context.payload.room, context.connection);
+      return { joined: true, id: context.connection.id };
+    });
+
+    await server.registerCommand("get-room-members", async (context) => {
+      const connections = await server.getRoom(context.payload.room);
+      return {
+        count: connections.length,
+        memberIds: connections.map((conn) => conn.id),
+      };
+    });
+
+    await clientA.connect();
+    await clientB.connect();
+
+    const { id: clientAID } = await clientA.command("join-room", {
+      room: "test-get-room-1",
+    });
+    const { id: clientBID } = await clientB.command("join-room", {
+      room: "test-get-room-1",
+    });
+    await clientA.command("join-room", { room: "test-get-room-2" });
+
+    await new Promise((res) => setTimeout(res, 200));
+
+    const room1Result = await clientA.command("get-room-members", {
+      room: "test-get-room-1",
+    });
+
+    const room2Result = await clientA.command("get-room-members", {
+      room: "test-get-room-2",
+    });
+    const emptyRoomResult = await clientA.command("get-room-members", {
+      room: "non-existent-room",
+    });
+
+    expect(room1Result.count).toBe(2);
+    expect(room1Result.memberIds.length).toBe(2);
+    expect(room1Result.memberIds).toContain(clientAID);
+    expect(room1Result.memberIds).toContain(clientBID);
+
+    expect(room2Result.count).toBe(1);
+    expect(room2Result.memberIds.length).toBe(1);
+    expect(room2Result.memberIds).toContain(clientAID);
+
+    expect(emptyRoomResult.count).toBe(0);
+    expect(emptyRoomResult.memberIds).toEqual([]);
+  }, 10000);
 });
