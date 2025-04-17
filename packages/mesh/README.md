@@ -177,17 +177,6 @@ Unsubscribe when no longer needed:
 await client.unsubscribe("chat:room1");
 ```
 
-#### Return Value
-
-`client.subscribe(...)` returns an object:
-
-```ts
-{
-  success: boolean;        // Whether the subscription was accepted
-  history: string[];       // Most recent messages (newest first)
-}
-```
-
 This feature is great for:
 
 - Real-time chat and collaboration
