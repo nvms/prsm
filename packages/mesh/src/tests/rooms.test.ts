@@ -69,4 +69,39 @@ describe("KeepAliveServer", () => {
     expect(await server.isInRoom("room2", connectionB)).toBe(false);
     expect(await server.isInRoom("room3", connectionA)).toBe(false);
   });
+
+  test("room metadata", async () => {
+    const room1 = "meta-room-1";
+    const room2 = "meta-room-2";
+
+    const initialMeta1 = { topic: "General", owner: "userA" };
+    await server.roomManager.setMetadata(room1, initialMeta1);
+
+    let meta1 = await server.roomManager.getMetadata(room1);
+    expect(meta1).toEqual(initialMeta1);
+
+    const updateMeta1 = { topic: "Updated Topic", settings: { max: 10 } };
+    await server.roomManager.updateMetadata(room1, updateMeta1);
+
+    meta1 = await server.roomManager.getMetadata(room1);
+    expect(meta1).toEqual({ ...initialMeta1, ...updateMeta1 });
+
+    const initialMeta2 = { topic: "Gaming", private: true };
+    await server.roomManager.setMetadata(room2, initialMeta2);
+
+    expect(await server.roomManager.getMetadata(room2)).toEqual(initialMeta2);
+
+    expect(
+      await server.roomManager.getMetadata("non-existent-room")
+    ).toBeNull();
+
+    const allMeta = await server.roomManager.getAllMetadata();
+    expect(allMeta).toEqual({
+      [room1]: { ...initialMeta1, ...updateMeta1 },
+      [room2]: initialMeta2,
+    });
+
+    await server.roomManager.clearRoom(room1);
+    expect(await server.roomManager.getMetadata(room1)).toBeNull();
+  });
 });

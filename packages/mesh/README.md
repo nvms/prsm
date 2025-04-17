@@ -186,7 +186,7 @@ This feature is great for:
 
 ### Metadata
 
-You'll probably encounter a scenario where you need to relate some data to a particular connection. Mesh provides a way to do this using the `setMetadata` method. This is useful for storing user IDs, tokens, or any other information you need to associate with a connection.
+You can associate data like user IDs, tokens, or custom attributes with a connection using the `setMetadata` method. This metadata is stored in Redis and accessible from any server instance, making it ideal for identifying users, managing permissions, or persisting session-related data across distributed deployments.
 
 Metadata is stored in Redis, so it can be safely accessed from any instance of your server.
 
@@ -229,6 +229,37 @@ Get all metadata for all connections in a specific room:
 const metadata = await server.connectionManager.getAllMetadataForRoom(roomName);
 // [{ [connectionId]: { userId, token } }, ...]
 ```
+
+### Room Metadata
+
+Similar to connection metadata, Mesh allows you to associate arbitrary data with rooms. This is useful for storing room-specific information like topics, settings, or ownership details. Room metadata is also stored in Redis and accessible across all server instances.
+
+```ts
+// set metadata for a room
+await server.roomManager.setMetadata("lobby", {
+  topic: "General Discussion",
+  maxUsers: 50,
+});
+
+// get metadata for a specific room
+const lobbyMeta = await server.roomManager.getMetadata("lobby");
+// { topic: "General Discussion", maxUsers: 50 }
+
+// update metadata (merges with existing data)
+await server.roomManager.updateMetadata("lobby", {
+  topic: "Updated Topic", // Overwrites existing topic
+  private: false, // Adds new field
+});
+
+const updatedLobbyMeta = await server.roomManager.getMetadata("lobby");
+// { topic: "Updated Topic", maxUsers: 50, private: false }
+
+// get metadata for all rooms
+const allRoomMeta = await server.roomManager.getAllMetadata();
+// { lobby: { topic: "Updated Topic", maxUsers: 50, private: false }, otherRoom: { ... } }
+```
+
+Room metadata is removed when `clearRoom(roomName)` is called.
 
 ### Command Middleware
 
