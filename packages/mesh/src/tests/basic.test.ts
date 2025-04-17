@@ -1,0 +1,133 @@
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import Redis from "ioredis";
+import { MeshServer } from "../server";
+import { MeshClient, Status } from "../client";
+
+const REDIS_HOST = process.env.REDIS_HOST || "127.0.0.1";
+const REDIS_PORT = process.env.REDIS_PORT
+  ? parseInt(process.env.REDIS_PORT, 10)
+  : 6379;
+
+const createTestServer = (port: number) =>
+  new MeshServer({
+    port,
+    redisOptions: {
+      host: REDIS_HOST,
+      port: REDIS_PORT,
+    },
+  });
+
+const flushRedis = async () => {
+  const redis = new Redis({ host: REDIS_HOST, port: REDIS_PORT });
+  await redis.flushdb();
+  await redis.quit();
+};
+
+describe("KeepAliveServer", () => {
+  const port = 8126;
+  let server: MeshServer;
+  let clientA: MeshClient;
+  let clientB: MeshClient;
+
+  beforeEach(async () => {
+    await flushRedis();
+
+    server = createTestServer(port);
+    await server.ready();
+
+    clientA = new MeshClient(`ws://localhost:${port}`);
+    clientB = new MeshClient(`ws://localhost:${port}`);
+  });
+
+  afterEach(async () => {
+    await clientA.close();
+    await clientB.close();
+
+    await server.close();
+  });
+
+  test("should create a server instance", () => {
+    expect(server).toBeInstanceOf(MeshServer);
+    expect(server.redis).toBeInstanceOf(Redis);
+    expect(server.roomManager).toBeDefined();
+    expect(server.connectionManager).toBeDefined();
+  });
+
+  test("clients can connect to the server", async () => {
+    await clientA.connect();
+    expect(clientA.status).toBe(Status.ONLINE);
+
+    await clientB.connect();
+    expect(clientB.status).toBe(Status.ONLINE);
+  });
+
+  test("clients can disconnect from the server", async () => {
+    await clientA.connect();
+    expect(clientA.status).toBe(Status.ONLINE);
+
+    await clientA.close();
+    expect(clientA.status).toBe(Status.OFFLINE);
+  });
+
+  test("clients can send a command and receive a response", async () => {
+    server.registerCommand("echo", async (c) => `echo: ${c.payload}`);
+    await clientA.connect();
+    const response = await clientA.command("echo", "Hello, World!");
+    expect(response).toBe("echo: Hello, World!");
+    await clientA.close();
+  });
+
+  describe("metadata", () => {
+    test("server can store metadata for a connection", async () => {
+      await clientA.connect();
+      await clientB.connect();
+      const metadataA = { name: "Client A", id: 1 };
+      const metadataB = { name: "Client B", id: 2 };
+      const connectionA = server.connectionManager.getLocalConnections()[0]!;
+      const connectionB = server.connectionManager.getLocalConnections()[1]!;
+      await server.connectionManager.setMetadata(connectionA, metadataA);
+      await server.connectionManager.setMetadata(connectionB, metadataB);
+      const storedMetadataA = await server.connectionManager.getMetadata(
+        connectionA
+      );
+      const storedMetadataB = await server.connectionManager.getMetadata(
+        connectionB
+      );
+      expect(storedMetadataA).toEqual(metadataA);
+      expect(storedMetadataB).toEqual(metadataB);
+
+      const allMetadata = await server.connectionManager.getAllMetadata();
+      expect(allMetadata).toEqual([
+        { [connectionA.id]: metadataA },
+        { [connectionB.id]: metadataB },
+      ]);
+
+      const allMetadataFromNonExistentRoom =
+        await server.connectionManager.getAllMetadataForRoom(
+          "non-existent-room"
+        );
+      expect(allMetadataFromNonExistentRoom).toEqual([]);
+    });
+
+    test("server can retrieve metadata for a room of connections", async () => {
+      await clientA.connect();
+      await clientB.connect();
+      const metadataA = { name: "Client A", id: 1 };
+      const metadataB = { name: "Client B", id: 2 };
+      const connectionA = server.connectionManager.getLocalConnections()[0]!;
+      const connectionB = server.connectionManager.getLocalConnections()[1]!;
+      await server.connectionManager.setMetadata(connectionA, metadataA);
+      await server.connectionManager.setMetadata(connectionB, metadataB);
+      await server.addToRoom("room-a", connectionA);
+      await server.addToRoom("room-b", connectionB);
+
+      const roomAMetadata =
+        await server.connectionManager.getAllMetadataForRoom("room-a");
+      expect(roomAMetadata).toEqual([{ [connectionA.id]: metadataA }]);
+
+      const roomBMetadata =
+        await server.connectionManager.getAllMetadataForRoom("room-b");
+      expect(roomBMetadata).toEqual([{ [connectionB.id]: metadataB }]);
+    });
+  });
+});

@@ -1,0 +1,39 @@
+name: mesh-tests
+
+on:
+  push:
+    paths:
+      - 'packages/mesh/**'
+  pull_request:
+    paths:
+      - 'packages/mesh/**'
+
+jobs:
+  test-mesh:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: install deps
+        working-directory: packages/mesh
+        run: bun install
+
+      - name: run tests
+        working-directory: packages/mesh
+        env:
+          REDIS_URL: redis://localhost:6379
+        run: bun test
