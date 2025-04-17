@@ -7,7 +7,7 @@ Mesh is a command-based WebSocket server and client framework designed for scala
 ### Server
 
 ```ts
-import { MeshServer, MeshContext } from "@prsm/mesh/server";
+import { MeshServer } from "@prsm/mesh/server";
 
 const server = new MeshServer({
   port: 8080,
