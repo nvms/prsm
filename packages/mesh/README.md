@@ -134,6 +134,27 @@ server.exposeChannel(/^private:chat:.+$/, async (conn, channel) => {
 });
 ```
 
+#### Server Publishing
+
+To publish messages to a channel (which subscribed clients will receive), use the `publishToChannel` method. You can optionally store a history of recent messages in Redis.
+
+```ts
+// publish to 'notifications:global' without history
+await server.publishToChannel(
+  "notifications:global",
+  JSON.stringify({ alert: "Red alert!" })
+);
+
+// publish a chat message and keep the last 50 messages in history
+await server.publishToChannel(
+  "chat:room1",
+  JSON.stringify({ type: "user-message", user: "1", text: "Hi" }),
+  50 // store in Redis history
+);
+```
+
+The `history` parameter tells Mesh to store the message in a Redis list (`history:<channel>`) and trim the list to the specified size, ensuring only the most recent messages are kept. Clients subscribing with the `historyLimit` option will receive these historical messages upon connection.
+
 #### Client Usage
 
 ```ts
