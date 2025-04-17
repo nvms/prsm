@@ -6,11 +6,6 @@ import { Status } from "../common/status";
 import { IdManager } from "./ids";
 import { Queue } from "./queue";
 
-export type LatencyPayload = {
-  /** Round-trip time in milliseconds. */
-  latency: number;
-};
-
 export class Connection extends EventEmitter {
   socket: WebSocket | null = null;
   ids = new IdManager();
