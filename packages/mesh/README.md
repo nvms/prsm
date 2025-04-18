@@ -357,7 +357,7 @@ await client.unsubscribeRecord("product:456");
 
 ### Versioning and Resync
 
-Every update includes a `version`. Clients should track the current version and, in `patch` mode, expect `version === localVersion + 1`. If a gap is detected (missed patch), the client will automatically be sent a full record update to resync.
+Every update includes a `version`. Clients track the current version and, in `patch` mode, expect `version === localVersion + 1`. If a gap is detected (missed patch), the client will automatically be sent a full record update to resync. It does this by transparently unsubscribing and resubscribing to the record.
 
 This system allows fine-grained, real-time synchronization of distributed state with minimal overhead.
 
@@ -418,7 +418,7 @@ Middleware functions receive the same `MeshContext` object as command handlers a
 
 Mesh includes a built-in ping/pong system to track latency and detect dead connections. This is implemented at the _application level_ (not via raw WebSocket protocol `ping()` frames) to allow for:
 
-- Accurate latency measurement from server to client.
+- Accurate round-trip latency measurement from server to client.
 - Graceful connection closure and multi-instance Redis cleanup.
 - Fine-tuned control using configurable missed ping/pong thresholds.
 
