@@ -27,6 +27,10 @@ Mesh is a command-based WebSocket server and client framework designed for scala
 
 ## Quickstart
 
+```bash
+npm install @prsm/mesh
+```
+
 Here's the fastest way to get a server and client connected.
 
 ### Server
