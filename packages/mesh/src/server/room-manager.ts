@@ -68,6 +68,21 @@ export class RoomManager {
   }
 
   /**
+   * Retrieves a list of rooms that the specified connection is currently a member of.
+   *
+   * @param {Connection | string} connection - The connection object or connection ID for which to retrieve room memberships.
+   * @returns {Promise<string[]>} A promise that resolves to an array of room names associated with the connection.
+   * @throws {Error} If the underlying Redis operation fails, the promise will be rejected with an error.
+   */
+  async getRoomsForConnection(
+    connection: Connection | string
+  ): Promise<string[]> {
+    const connectionId =
+      typeof connection === "string" ? connection : connection.id;
+    return await this.redis.smembers(this.connectionsRoomKey(connectionId));
+  }
+
+  /**
    * Removes a connection from a specified room and updates Redis accordingly.
    * Accepts either a Connection object or a string representing the connection ID.
    * Updates both the room's set of connections and the connection's set of rooms in Redis.
