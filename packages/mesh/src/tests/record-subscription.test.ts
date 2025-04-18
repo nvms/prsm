@@ -70,7 +70,11 @@ describe("Record Subscription", () => {
 
     // callback is called once initially with the full record
     expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith({ full: initialData, version: 1 });
+    expect(callback).toHaveBeenCalledWith({
+      recordId,
+      full: initialData,
+      version: 1,
+    });
   });
 
   test("client cannot subscribe to an unexposed record", async () => {
@@ -109,6 +113,11 @@ describe("Record Subscription", () => {
     expect(result1.version).toBe(0); // nothing published yet
     expect(result1.record).toBeNull();
     expect(callback1).toHaveBeenCalledTimes(1); // initial call with null
+    expect(callback1).toHaveBeenCalledWith({
+      recordId: "guarded:record",
+      full: null,
+      version: 0,
+    });
 
     expect(result2.success).toBe(false);
     expect(result2.version).toBe(0);
@@ -136,9 +145,9 @@ describe("Record Subscription", () => {
     await wait(50);
 
     expect(updates.length).toBe(3); // initial + 2 updates
-    expect(updates[0]).toEqual({ full: null, version: 0 });
-    expect(updates[1]).toEqual({ full: data1, version: 1 });
-    expect(updates[2]).toEqual({ full: data2, version: 2 });
+    expect(updates[0]).toEqual({ recordId, full: null, version: 0 });
+    expect(updates[1]).toEqual({ recordId, full: data1, version: 1 });
+    expect(updates[2]).toEqual({ recordId, full: data2, version: 2 });
   });
 
   test("client receives patch updates when mode is 'patch'", async () => {
@@ -165,16 +174,19 @@ describe("Record Subscription", () => {
     await wait(50);
 
     expect(updates.length).toBe(4);
-    expect(updates[0]).toEqual({ full: null, version: 0 });
+    expect(updates[0]).toEqual({ recordId, full: null, version: 0 });
     expect(updates[1]).toEqual({
+      recordId,
       patch: [{ op: "add", path: "/count", value: 1 }],
       version: 1,
     });
     expect(updates[2]).toEqual({
+      recordId,
       patch: [{ op: "add", path: "/name", value: "added" }],
       version: 2,
     });
     expect(updates[3]).toEqual({
+      recordId,
       patch: [{ op: "remove", path: "/count" }],
       version: 3,
     });
@@ -207,18 +219,20 @@ describe("Record Subscription", () => {
 
     // client 1 wants full updates
     expect(updates1.length).toBe(3);
-    expect(updates1[0]).toEqual({ full: null, version: 0 });
-    expect(updates1[1]).toEqual({ full: data1, version: 1 });
-    expect(updates1[2]).toEqual({ full: data2, version: 2 });
+    expect(updates1[0]).toEqual({ recordId, full: null, version: 0 });
+    expect(updates1[1]).toEqual({ recordId, full: data1, version: 1 });
+    expect(updates1[2]).toEqual({ recordId, full: data2, version: 2 });
 
     // client 2 wants patches
     expect(updates2.length).toBe(3);
-    expect(updates2[0]).toEqual({ full: null, version: 0 });
+    expect(updates2[0]).toEqual({ recordId, full: null, version: 0 });
     expect(updates2[1]).toEqual({
+      recordId,
       patch: [{ op: "add", path: "/value", value: "a" }],
       version: 1,
     });
     expect(updates2[2]).toEqual({
+      recordId,
       patch: [{ op: "replace", path: "/value", value: "b" }],
       version: 2,
     });
@@ -245,8 +259,8 @@ describe("Record Subscription", () => {
     await wait(50);
 
     expect(updates.length).toBe(2);
-    expect(updates[0]).toEqual({ full: null, version: 0 });
-    expect(updates[1]).toEqual({ full: { count: 1 }, version: 1 });
+    expect(updates[0]).toEqual({ recordId, full: null, version: 0 });
+    expect(updates[1]).toEqual({ recordId, full: { count: 1 }, version: 1 });
   });
 
   test("desync detection triggers resubscribe (patch mode)", async () => {
@@ -283,13 +297,14 @@ describe("Record Subscription", () => {
     await wait(100); // allocate time for desync handling
 
     expect(callback).toHaveBeenCalledTimes(3); // v0, v1, v4
-    expect(updates[0]).toEqual({ full: null, version: 0 });
+    expect(updates[0]).toEqual({ recordId, full: null, version: 0 });
     expect(updates[1]).toEqual({
+      recordId,
       patch: [{ op: "add", path: "/count", value: 1 }],
       version: 1,
     });
     // third call is the full record after resync
-    expect(updates[2]).toEqual({ full: data4, version: 4 });
+    expect(updates[2]).toEqual({ recordId, full: data4, version: 4 });
 
     // verify unsubscribe and subscribe were called for resync
     expect(commandSpy).toHaveBeenCalledWith(

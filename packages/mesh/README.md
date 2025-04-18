@@ -308,8 +308,12 @@ let userProfile = {};
 const { success, record, version } = await client.subscribeRecord(
   "user:123",
   (update) => {
+    // update contains { recordId, full, version }
     userProfile = update.full;
-    console.log(`Received full update v${update.version}:`, update.full);
+    console.log(
+      `Received full update for ${update.recordId} v${update.version}:`,
+      update.full
+    );
   }
 );
 
@@ -330,14 +334,17 @@ let productData = {};
 const { success, record, version } = await client.subscribeRecord(
   "product:456",
   (update) => {
+    // update contains { recordId, patch?, full?, version }
     if (update.patch) {
       // normally you’ll receive `patch`, but if the client falls out of sync,
       // the server will send a full update instead to resynchronize.
       applyPatch(productData, update.patch);
-      console.log(`Applied patch v${update.version}`);
+      console.log(`Applied patch for ${update.recordId} v${update.version}`);
     } else {
       productData = update.full;
-      console.log(`Received full (resync) v${update.version}`);
+      console.log(
+        `Received full (resync) for ${update.recordId} v${update.version}`
+      );
     }
   },
   { mode: "patch" }

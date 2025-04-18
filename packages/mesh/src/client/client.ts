@@ -66,6 +66,7 @@ export class MeshClient extends EventEmitter {
     string, // recordId
     {
       callback: (update: {
+        recordId: string;
         full?: any;
         patch?: Operation[];
         version: number;
@@ -409,14 +410,14 @@ export class MeshClient extends EventEmitter {
       }
 
       subscription.localVersion = version;
-      await subscription.callback({ patch, version });
+      await subscription.callback({ recordId, patch, version });
 
       return;
     }
 
     if (full !== undefined) {
       subscription.localVersion = version;
-      await subscription.callback({ full, version });
+      await subscription.callback({ recordId, full, version });
     }
   }
 
@@ -484,6 +485,7 @@ export class MeshClient extends EventEmitter {
   async subscribeRecord(
     recordId: string,
     callback: (update: {
+      recordId: string;
       full?: any;
       patch?: Operation[];
       version: number;
@@ -502,7 +504,11 @@ export class MeshClient extends EventEmitter {
           mode,
         });
         // Immediately call callback with the initial full record
-        await callback({ full: result.record, version: result.version });
+        await callback({
+          recordId,
+          full: result.record,
+          version: result.version,
+        });
       }
 
       return {
