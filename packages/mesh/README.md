@@ -2,6 +2,7 @@
 
 Mesh is a command-based WebSocket framework for real-time apps—whether you're running a single server or a distributed cluster. It uses Redis to coordinate connections, rooms, and shared state across instances, with built-in support for structured commands, latency tracking, and automatic reconnection.
 
+
 * [Quickstart](#quickstart)
   * [Server](#server)
   * [Client](#client)
@@ -12,10 +13,15 @@ Mesh is a command-based WebSocket framework for real-time apps—whether you're 
     * [Server configuration](#server-configuration)
     * [Server publishing](#server-publishing)
     * [Client usage](#client-usage)
+* [Presence](#presence)
+  * [Server configuration](#server-configuration-1)
+  * [Getting presence information (server-side)](#getting-presence-information-server-side)
+  * [Client usage](#client-usage-1)
+  * [Presence and metadata together](#presence-and-metadata-together)
   * [Metadata](#metadata)
   * [Room metadata](#room-metadata)
 * [Record subscriptions](#record-subscriptions)
-  * [Server configuration](#server-configuration-1)
+  * [Server configuration](#server-configuration-2)
   * [Server configuration (writable)](#server-configuration-writable)
   * [Updating records (server-side)](#updating-records-server-side)
   * [Updating records (client-side)](#updating-records-client-side)
@@ -69,10 +75,13 @@ console.log(response); // "echo: Hello!"
 
 Mesh supports multiple real-time patterns—choose where to go next based on your use case:
 
-- **Pub/Sub messaging (e.g. chat, notifications):**  
+- **Pub/Sub messaging (e.g. chat, notifications):**
   → [Redis channel subscriptions](#redis-channel-subscriptions)
 
-- **Granular, versioned data sync (e.g. user profiles, dashboards):**  
+- **Real-time presence tracking (e.g. who's online, typing indicators):**
+  → [Presence](#presence)
+
+- **Granular, versioned data sync (e.g. user profiles, dashboards):**
   → [Record subscriptions](#record-subscriptions)
 
 - **Identify users, store connection info, or manage rooms:**  
@@ -219,6 +228,127 @@ This feature is great for:
 - Live system dashboards
 - Pub/sub messaging across distributed server instances
 - Notification feeds with instant context
+
+## Presence
+
+Mesh provides a built-in presence system that tracks which connections are present in specific rooms and notifies clients when connections join or leave. This is ideal for building features like "who's online" indicators, typing indicators, or any real-time awareness of other users.
+
+> [!NOTE]
+> Presence only tracks *connection IDs*, not metadata. You must join them explicitly if you want to show e.g. usernames, avatars, emails, etc.
+
+### Server configuration
+
+Enable presence tracking for specific rooms using exact names or regex patterns:
+
+```ts
+// track presence for all rooms matching a pattern
+server.trackPresence(/^room:.*$/);
+
+// track presence for a specific room
+server.trackPresence("lobby");
+
+// guard who can see presence
+server.trackPresence("admin-room", async (conn, roomName) => {
+  const meta = await server.connectionManager.getMetadata(conn);
+  return meta?.isAdmin === true;
+});
+
+// custom TTL
+server.trackPresence("game-room", { ttl: 60_000 }); // ms
+
+// guard and TTL
+server.trackPresence("vip-room", {
+  ttl: 30_000,
+  guard: async (conn, roomName) => {
+    const meta = await server.connectionManager.getMetadata(conn);
+    return meta?.isVIP === true;
+  }
+});
+```
+
+When presence is enabled for a room, Mesh automatically:
+
+1. Tracks which connections are present in the room
+2. Emits presence events when connections join or leave
+3. Refreshes presence TTL when connections send pong responses
+4. Cleans up presence when connections disconnect
+
+### Getting presence information (server-side)
+
+```ts
+// Get all connections currently present in a room
+const connectionIds = await server.presenceManager.getPresentConnections("lobby");
+```
+
+### Client usage
+
+Subscribe to presence updates for a room:
+
+```ts
+const { success, present } = await client.subscribePresence(
+  "lobby",
+  (update) => {
+    if (update.type === "join") {
+      console.log("User joined:", update.connectionId);
+    } else if (update.type === "leave") {
+      console.log("User left:", update.connectionId);
+    }
+  }
+);
+
+// initial list of present connections
+console.log("Currently present:", present); // ["conn1", "conn2", ...]
+```
+
+Unsubscribe when no longer needed:
+
+```ts
+await client.unsubscribePresence("lobby");
+```
+
+### Presence and metadata together
+
+Presence is most useful when combined with connection metadata. For example:
+
+```ts
+// server: set user metadata when they connect
+server.onConnection(async (connection) => {
+  // maybe from an auth token or session
+  await server.connectionManager.setMetadata(connection, {
+    userId: "user123",
+    username: "Alice",
+    avatar: "https://example.com/avatar.png"
+  });
+});
+
+// client: subscribe to presence and resolve metadata
+const { success, present } = await client.subscribePresence(
+  "lobby",
+  async (update) => {
+    // fetch metadata for the connection that joined/left.
+    //
+    // since clients cannot access `getAllMetadataForRoom()` directly (it's just a server API),
+    // you can expose it via a custom command like `get-user-metadata`:
+    const metadata = await client.command("get-user-metadata", {
+      connectionId: update.connectionId
+    });
+    
+    if (update.type === "join") {
+      console.log(`${metadata.username} joined the lobby`);
+    } else if (update.type === "leave") {
+      console.log(`${metadata.username} left the lobby`);
+    }
+  }
+);
+
+// initial presence - fetch metadata for all present connections
+const allMetadata = await Promise.all(
+  present.map(connectionId =>
+    client.command("get-user-metadata", { connectionId })
+  )
+);
+console.log("Users in lobby:", allMetadata);
+```
 
 ### Metadata
 
@@ -587,6 +717,7 @@ Together, this system provides end-to-end connection liveness guarantees without
 | **Command API (RPC)**    | ✅                       | ❌                              | ✅                  | ✅              | ❌                   | ❌                      |
 | **Raw Events Support**   | ✅                       | ✅                              | ⚠️ Limited          | ✅              | ✅                   | ✅                      |
 | **Room Support**         | ✅                       | ✅                              | ✅                  | ✅              | ⚠️ DIY               | ⚠️ Manual               |
+| **Presence Tracking**    | ✅ Built-in              | ⚠️ Manual                       | ✅                  | ✅              | ❌                   | ❌                      |
 | **Redis Scaling**        | ✅ Native                | ✅ With adapter                 | ✅                  | ✅              | ✅ If added          | ❌                      |
 | **Connection Metadata**  | ✅ Redis-backed          | ⚠️ Manual                       | ⚠️ Limited          | ✅ Records      | ❌                   | ❌                      |
 | **Latency Tracking**     | ✅ Built-in              | ⚠️ Manual                       | ❌                  | ❌              | ❌                   | ❌                      |

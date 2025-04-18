@@ -100,6 +100,10 @@ export class Connection extends EventEmitter {
         } else if (command.command === "pong") {
           this.alive = true;
           this.missedPongs = 0;
+
+          // this refreshes presence TTL for all rooms this connection is in
+          this.emit("pong", this.id);
+
           return;
         }
 

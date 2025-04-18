@@ -5,6 +5,7 @@ import { WebSocket, WebSocketServer, type ServerOptions } from "ws";
 import { RoomManager } from "./room-manager";
 import { RecordManager } from "./record-manager";
 import { ConnectionManager } from "./connection-manager";
+import { PresenceManager } from "./presence-manager";
 import { CodeError, Status } from "../client";
 import { Connection } from "./connection";
 import { parseCommand, type Command } from "../common/message";
@@ -89,6 +90,7 @@ export class MeshServer extends WebSocketServer {
   roomManager: RoomManager;
   recordManager: RecordManager;
   connectionManager: ConnectionManager;
+  presenceManager: PresenceManager;
   serverOptions: MeshServerOptions;
   status: Status = Status.OFFLINE;
   private exposedChannels: ChannelPattern[] = [];
@@ -170,6 +172,7 @@ export class MeshServer extends WebSocketServer {
       this.instanceId,
       this.roomManager
     );
+    this.presenceManager = new PresenceManager(this.redis, this.roomManager);
 
     this.subscribeToInstanceChannel();
 
@@ -228,6 +231,18 @@ export class MeshServer extends WebSocketServer {
         this.handleInstancePubSubMessage(channel, message);
       } else if (channel === RECORD_PUB_SUB_CHANNEL) {
         this.handleRecordUpdatePubSubMessage(message);
+      } else if (channel.startsWith("mesh:presence:updates:")) {
+        const roomName = channel.replace("mesh:presence:updates:", "");
+        if (this.channelSubscriptions[channel]) {
+          for (const connection of this.channelSubscriptions[channel]) {
+            if (!connection.isDead) {
+              connection.send({
+                command: "presence-update",
+                payload: JSON.parse(message),
+              });
+            }
+          }
+        }
       } else if (this.channelSubscriptions[channel]) {
         for (const connection of this.channelSubscriptions[channel]) {
           if (!connection.isDead) {
@@ -357,6 +372,24 @@ export class MeshServer extends WebSocketServer {
 
       connection.on("error", (err) => {
         this.emit("clientError", err, connection);
+      });
+
+      connection.on("pong", async (connectionId) => {
+        try {
+          const rooms = await this.roomManager.getRoomsForConnection(
+            connectionId
+          );
+          for (const roomName of rooms) {
+            if (await this.presenceManager.isRoomTracked(roomName)) {
+              await this.presenceManager.refreshPresence(
+                connectionId,
+                roomName
+              );
+            }
+          }
+        } catch (err) {
+          this.emit("error", new Error(`Failed to refresh presence: ${err}`));
+        }
       });
     });
   }
@@ -614,6 +647,24 @@ export class MeshServer extends WebSocketServer {
     }
   }
 
+  trackPresence(
+    roomPattern: string | RegExp,
+    guardOrOptions?:
+      | ((
+          connection: Connection,
+          roomName: string
+        ) => Promise<boolean> | boolean)
+      | {
+          ttl?: number;
+          guard?: (
+            connection: Connection,
+            roomName: string
+          ) => Promise<boolean> | boolean;
+        }
+  ): void {
+    this.presenceManager.trackRoom(roomPattern, guardOrOptions);
+  }
+
   private registerBuiltinCommands() {
     this.registerCommand<
       { channel: string; historyLimit?: number },
@@ -746,6 +797,74 @@ export class MeshServer extends WebSocketServer {
         );
       }
     });
+
+    this.registerCommand<
+      { roomName: string },
+      { success: boolean; present: string[] }
+    >("subscribe-presence", async (ctx) => {
+      const { roomName } = ctx.payload;
+      const connectionId = ctx.connection.id;
+
+      if (
+        !(await this.presenceManager.isRoomTracked(roomName, ctx.connection))
+      ) {
+        return { success: false, present: [] };
+      }
+
+      try {
+        const presenceChannel = `mesh:presence:updates:${roomName}`;
+
+        if (!this.channelSubscriptions[presenceChannel]) {
+          this.channelSubscriptions[presenceChannel] = new Set();
+          await new Promise<void>((resolve, reject) => {
+            this.subClient.subscribe(presenceChannel, (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          });
+        }
+
+        this.channelSubscriptions[presenceChannel].add(ctx.connection);
+
+        const present = await this.presenceManager.getPresentConnections(
+          roomName
+        );
+
+        return { success: true, present };
+      } catch (e) {
+        console.error(
+          `Failed to subscribe to presence for room ${roomName}:`,
+          e
+        );
+        return { success: false, present: [] };
+      }
+    });
+
+    this.registerCommand<{ roomName: string }, boolean>(
+      "unsubscribe-presence",
+      async (ctx) => {
+        const { roomName } = ctx.payload;
+        const presenceChannel = `mesh:presence:updates:${roomName}`;
+
+        if (this.channelSubscriptions[presenceChannel]) {
+          this.channelSubscriptions[presenceChannel].delete(ctx.connection);
+
+          if (this.channelSubscriptions[presenceChannel].size === 0) {
+            await new Promise<void>((resolve, reject) => {
+              this.subClient.unsubscribe(presenceChannel, (err) => {
+                if (err) reject(err);
+                else resolve();
+              });
+            });
+            delete this.channelSubscriptions[presenceChannel];
+          }
+
+          return true;
+        }
+
+        return false;
+      }
+    );
   }
 
   /**
@@ -1016,10 +1135,23 @@ export class MeshServer extends WebSocketServer {
   }
 
   async addToRoom(roomName: string, connection: Connection | string) {
-    return this.roomManager.addToRoom(roomName, connection);
+    const connectionId =
+      typeof connection === "string" ? connection : connection.id;
+    await this.roomManager.addToRoom(roomName, connection);
+
+    if (await this.presenceManager.isRoomTracked(roomName)) {
+      await this.presenceManager.markOnline(connectionId, roomName);
+    }
   }
 
   async removeFromRoom(roomName: string, connection: Connection | string) {
+    const connectionId =
+      typeof connection === "string" ? connection : connection.id;
+
+    if (await this.presenceManager.isRoomTracked(roomName)) {
+      await this.presenceManager.markOffline(connectionId, roomName);
+    }
+
     return this.roomManager.removeFromRoom(roomName, connection);
   }
 
@@ -1042,9 +1174,14 @@ export class MeshServer extends WebSocketServer {
   private async cleanupConnection(connection: Connection) {
     connection.stopIntervals();
 
-    await this.connectionManager.cleanupConnection(connection);
-    await this.roomManager.cleanupConnection(connection);
-    await this.cleanupRecordSubscriptions(connection); // Ensure this line exists
+    try {
+      await this.presenceManager.cleanupConnection(connection);
+      await this.connectionManager.cleanupConnection(connection);
+      await this.roomManager.cleanupConnection(connection);
+      await this.cleanupRecordSubscriptions(connection);
+    } catch (err) {
+      this.emit("error", new Error(`Failed to clean up connection: ${err}`));
+    }
   }
 
   /**
@@ -1102,7 +1239,7 @@ export class MeshServer extends WebSocketServer {
     this.on("connected", callback);
     return this;
   }
-  
+
   /**
    * Registers a callback function to be executed when a connection is closed.
    *

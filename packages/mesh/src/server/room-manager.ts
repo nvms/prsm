@@ -9,11 +9,11 @@ export class RoomManager {
   }
 
   private roomKey(roomName: string) {
-    return `room:${roomName}`;
+    return `mesh:room:${roomName}`;
   }
 
   private connectionsRoomKey(connectionId: string) {
-    return `connection:${connectionId}:rooms`;
+    return `mesh:connection:${connectionId}:rooms`;
   }
 
   private roomMetadataKey(roomName: string) {
