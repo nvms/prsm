@@ -2,30 +2,32 @@
 
 Mesh is a command-based WebSocket server and client framework designed for scalable, multi-instance deployments. It uses Redis to coordinate connections, rooms, and metadata across servers, enabling reliable horizontal scaling. Mesh includes built-in ping/latency tracking, automatic reconnection, and a simple command API for clean, asynchronous, RPC-like communication.
 
-* [Quickstart](#quickstart)
-  * [Server](#server)
-  * [Client](#client)
-* [Distributed Messaging Architecture](#distributed-messaging-architecture)
-  * [Redis Channel Subscriptions](#redis-channel-subscriptions)
-    * [Server Configuration](#server-configuration)
-    * [Server Publishing](#server-publishing)
-    * [Client Usage](#client-usage)
-  * [Metadata](#metadata)
-  * [Room Metadata](#room-metadata)
-* [Record Subscriptions](#record-subscriptions)
-  * [Server Configuration](#server-configuration-1)
-  * [Updating Records](#updating-records)
-  * [Client Usage — Full Mode (default)](#client-usage--full-mode-default)
-  * [Client Usage — Patch Mode](#client-usage--patch-mode)
-  * [Unsubscribing](#unsubscribing)
-  * [Versioning and Resync](#versioning-and-resync)
-* [Command Middleware](#command-middleware)
-* [Latency Tracking and Connection Liveness](#latency-tracking-and-connection-liveness)
-  * [Server-Side Configuration](#server-side-configuration)
-  * [Client-Side Configuration](#client-side-configuration)
-* [Comparison](#comparison)
+- [Quickstart](#quickstart)
+  - [Server](#server)
+  - [Client](#client)
+- [Distributed Messaging Architecture](#distributed-messaging-architecture)
+  - [Redis Channel Subscriptions](#redis-channel-subscriptions)
+    - [Server Configuration](#server-configuration)
+    - [Server Publishing](#server-publishing)
+    - [Client Usage](#client-usage)
+  - [Metadata](#metadata)
+  - [Room Metadata](#room-metadata)
+- [Record Subscriptions](#record-subscriptions)
+  - [Server Configuration](#server-configuration-1)
+  - [Updating Records](#updating-records)
+  - [Client Usage — Full Mode (default)](#client-usage--full-mode-default)
+  - [Client Usage — Patch Mode](#client-usage--patch-mode)
+  - [Unsubscribing](#unsubscribing)
+  - [Versioning and Resync](#versioning-and-resync)
+- [Command Middleware](#command-middleware)
+- [Latency Tracking and Connection Liveness](#latency-tracking-and-connection-liveness)
+  - [Server-Side Configuration](#server-side-configuration)
+  - [Client-Side Configuration](#client-side-configuration)
+- [Comparison](#comparison)
 
 ## Quickstart
+
+Here's the fastest way to get a server and client connected.
 
 ### Server
 
@@ -40,25 +42,6 @@ const server = new MeshServer({
 server.registerCommand("echo", async (ctx) => {
   return `echo: ${ctx.payload}`;
 });
-
-server.registerCommand("this-command-throws", async (ctx) => {
-  throw new Error("Something went wrong");
-});
-
-server.registerCommand("join-room", async (ctx) => {
-  const { roomName } = ctx.payload;
-  await server.addToRoom(roomName, ctx.connection);
-  await server.broadcastRoom(roomName, "user-joined", {
-    roomName,
-    id: ctx.connection.id,
-  });
-  return { success: true };
-});
-
-server.registerCommand("broadcast", async (ctx) => {
-  server.broadcast("announcement", ctx.payload);
-  return { sent: true };
-});
 ```
 
 ### Client
@@ -69,38 +52,28 @@ import { MeshClient } from "@prsm/mesh/client";
 const client = new MeshClient("ws://localhost:8080");
 await client.connect();
 
-{
-  const response = await client.command("echo", "Hello, world!");
-  console.log(response); // echo: Hello, world!
-}
-
-{
-  // Or use the synchronous version which blocks the event loop
-  // until the command is completed.
-  const response = client.commandSync("echo", "Hello, world!");
-  console.log(response); // echo: Hello, world!
-}
-
-{
-  const response = await client.command("this-command-throws");
-  console.log(response); // { error: "Something went wrong" }
-}
-
-{
-  const response = await client.command("join-room", { roomName: "lobby" });
-  console.log(response); // { success: true }
-}
-
-client.on("latency", (event) => {
-  console.log(`Latency: ${event.detail.latency}ms`);
-});
-
-client.on("user-joined", (event) => {
-  console.log(`User ${event.detail.id} joined ${event.detail.roomName}`);
-});
-
-await client.close();
+const response = await client.command("echo", "Hello!");
+console.log(response); // "echo: Hello!"
 ```
+
+### Next Steps
+
+Mesh supports multiple real-time patterns—choose where to go next based on your use case:
+
+- **Pub/Sub messaging (e.g. chat, notifications):**  
+  → [Redis Channel Subscriptions](#redis-channel-subscriptions)
+
+- **Granular, versioned data sync (e.g. user profiles, dashboards):**  
+  → [Record Subscriptions](#record-subscriptions)
+
+- **Identify users, store connection info, or manage rooms:**  
+  → [Metadata](#metadata) and [Room Metadata](#room-metadata)
+
+- **Control access or validate inputs across commands:**  
+  → [Command Middleware](#command-middleware)
+
+Want to see how messages flow across servers?  
+→ [Distributed Messaging Architecture](#distributed-messaging-architecture)
 
 ## Distributed Messaging Architecture
 
