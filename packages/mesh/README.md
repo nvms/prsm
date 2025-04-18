@@ -2,7 +2,6 @@
 
 Mesh is a command-based WebSocket framework for real-time apps—whether you're running a single server or a distributed cluster. It uses Redis to coordinate connections, rooms, and shared state across instances, with built-in support for structured commands, latency tracking, and automatic reconnection.
 
-
 * [Quickstart](#quickstart)
   * [Server](#server)
   * [Client](#client)
@@ -17,7 +16,7 @@ Mesh is a command-based WebSocket framework for real-time apps—whether you're 
   * [Server configuration](#server-configuration-1)
   * [Getting presence information (server-side)](#getting-presence-information-server-side)
   * [Client usage](#client-usage-1)
-  * [Presence and metadata together](#presence-and-metadata-together)
+  * [Combining presence with user info](#combining-presence-with-user-info)
   * [Metadata](#metadata)
   * [Room metadata](#room-metadata)
 * [Record subscriptions](#record-subscriptions)
@@ -270,7 +269,7 @@ When presence is enabled for a room, Mesh automatically:
 
 1. Tracks which connections are present in the room
 2. Emits presence events when connections join or leave
-3. Refreshes presence TTL when connections send pong responses
+3. Refreshes each connection's presence TTL automatically as long as it remains connected and responding to pings
 4. Cleans up presence when connections disconnect
 
 ### Getting presence information (server-side)
@@ -306,7 +305,7 @@ Unsubscribe when no longer needed:
 await client.unsubscribePresence("lobby");
 ```
 
-### Presence and metadata together
+### Combining presence with user info
 
 Presence is most useful when combined with connection metadata. For example:
 
