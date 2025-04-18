@@ -481,4 +481,53 @@ describe("Record Subscription", () => {
       version: 2,
     });
   });
+
+  test("client can subscribe to primitive values in full mode", async () => {
+    const recordId = "test:record:primitive";
+    const initialValue = "initial value";
+    const updatedValue = "updated value";
+
+    await client1.connect();
+
+    await server.publishRecordUpdate(recordId, initialValue);
+    await wait(50);
+
+    const updates: any[] = [];
+    const callback = vi.fn((update: any) => {
+      updates.push(update);
+    });
+
+    const { success, record, version } = await client1.subscribeRecord(
+      recordId,
+      callback
+    );
+
+    expect(success).toBe(true);
+    expect(version).toBe(1);
+    expect(record).toEqual(initialValue);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({
+      recordId,
+      full: initialValue,
+      version: 1,
+    });
+
+    await server.publishRecordUpdate(recordId, updatedValue);
+    await wait(100);
+
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(updates.length).toBe(2);
+    expect(updates[1]).toEqual({
+      recordId,
+      full: updatedValue,
+      version: 2,
+    });
+
+    const serverState = await server.recordManager.getRecordAndVersion(
+      recordId
+    );
+    expect(serverState.record).toEqual(updatedValue);
+    expect(serverState.version).toBe(2);
+  });
 });
