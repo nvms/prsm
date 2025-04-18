@@ -2,6 +2,29 @@
 
 Mesh is a command-based WebSocket server and client framework designed for scalable, multi-instance deployments. It uses Redis to coordinate connections, rooms, and metadata across servers, enabling reliable horizontal scaling. Mesh includes built-in ping/latency tracking, automatic reconnection, and a simple command API for clean, asynchronous, RPC-like communication.
 
+* [Quickstart](#quickstart)
+  * [Server](#server)
+  * [Client](#client)
+* [Distributed Messaging Architecture](#distributed-messaging-architecture)
+  * [Redis Channel Subscriptions](#redis-channel-subscriptions)
+    * [Server Configuration](#server-configuration)
+    * [Server Publishing](#server-publishing)
+    * [Client Usage](#client-usage)
+  * [Metadata](#metadata)
+  * [Room Metadata](#room-metadata)
+* [Record Subscriptions](#record-subscriptions)
+  * [Server Configuration](#server-configuration-1)
+  * [Updating Records](#updating-records)
+  * [Client Usage — Full Mode (default)](#client-usage--full-mode-default)
+  * [Client Usage — Patch Mode](#client-usage--patch-mode)
+  * [Unsubscribing](#unsubscribing)
+  * [Versioning and Resync](#versioning-and-resync)
+* [Command Middleware](#command-middleware)
+* [Latency Tracking and Connection Liveness](#latency-tracking-and-connection-liveness)
+  * [Server-Side Configuration](#server-side-configuration)
+  * [Client-Side Configuration](#client-side-configuration)
+* [Comparison](#comparison)
+
 ## Quickstart
 
 ### Server
@@ -79,7 +102,7 @@ client.on("user-joined", (event) => {
 await client.close();
 ```
 
-## Room Communication Flow
+## Distributed Messaging Architecture
 
 The diagram below illustrates how Mesh handles communication across multiple server instances. It uses Redis to look up which connections belong to a room, determine their host instances, and routes messages accordingly — either locally or via pub/sub.
 
@@ -261,7 +284,109 @@ const allRoomMeta = await server.roomManager.getAllMetadata();
 
 Room metadata is removed when `clearRoom(roomName)` is called.
 
-### Command Middleware
+## Record Subscriptions
+
+Mesh supports subscribing to individual records stored in Redis. When a record changes, clients receive either the full value or a JSON patch describing the update—depending on the selected mode (`full` or `patch`).
+
+Subscriptions are multi-instance aware, versioned for integrity, and efficient at scale. Each connected client can independently choose its preferred mode.
+
+### Server Configuration
+
+Expose records using exact IDs or regex patterns. You can add optional per-client guard logic:
+
+```ts
+server.exposeRecord("user:123");
+
+server.exposeRecord(/^product:\d+$/);
+
+server.exposeRecord(/^private:.+$/, async (conn, recordId) => {
+  const meta = await server.connectionManager.getMetadata(conn);
+  return !!meta?.userId;
+});
+```
+
+### Updating Records
+
+Use `publishRecordUpdate()` to update the stored value, increment the version, generate a patch, and broadcast to all subscribed clients.
+
+```ts
+await server.publishRecordUpdate("user:123", {
+  name: "Alice",
+  email: "alice@example.com",
+});
+
+// later...
+await server.publishRecordUpdate("user:123", {
+  name: "Alice",
+  email: "alice@updated.com",
+  status: "active",
+});
+```
+
+### Client Usage — Full Mode (default)
+
+In `full` mode, the client receives the entire updated record every time. This is simpler to use and ideal for small records or when patching isn't needed.
+
+```ts
+let userProfile = {};
+
+const { success, record, version } = await client.subscribeRecord(
+  "user:123",
+  (update) => {
+    userProfile = update.full;
+    console.log(`Received full update v${update.version}:`, update.full);
+  }
+);
+
+if (success) {
+  userProfile = record;
+}
+```
+
+### Client Usage — Patch Mode
+
+In `patch` mode, the client receives only changes as JSON patches and must apply them locally. This is especially useful for large records that only change in small ways over time.
+
+```ts
+import { applyPatch } from "@prsm/mesh/client";
+
+let productData = {};
+
+const { success, record, version } = await client.subscribeRecord(
+  "product:456",
+  (update) => {
+    if (update.patch) {
+      // normally you’ll receive `patch`, but if the client falls out of sync,
+      // the server will send a full update instead to resynchronize.
+      applyPatch(productData, update.patch);
+      console.log(`Applied patch v${update.version}`);
+    } else {
+      productData = update.full;
+      console.log(`Received full (resync) v${update.version}`);
+    }
+  },
+  { mode: "patch" }
+);
+
+if (success) {
+  productData = record;
+}
+```
+
+### Unsubscribing
+
+```ts
+await client.unsubscribeRecord("user:123");
+await client.unsubscribeRecord("product:456");
+```
+
+### Versioning and Resync
+
+Every update includes a `version`. Clients should track the current version and, in `patch` mode, expect `version === localVersion + 1`. If a gap is detected (missed patch), the client will automatically be sent a full record update to resync.
+
+This system allows fine-grained, real-time synchronization of distributed state with minimal overhead.
+
+## Command Middleware
 
 Mesh allows you to define middleware functions that run before your command handlers. This is useful for tasks like authentication, validation, logging, or modifying the context before the main command logic executes.
 
@@ -294,10 +419,10 @@ Applied only to the specified command, running _after_ any global middleware.
 ```ts
 const validateProfileUpdate = async (ctx) => {
   const { name, email } = ctx.payload;
-  if (typeof name !== 'string' || name.length === 0) {
+  if (typeof name !== "string" || name.length === 0) {
     throw new Error("Invalid name");
   }
-  if (typeof email !== 'string' || !email.includes('@')) {
+  if (typeof email !== "string" || !email.includes("@")) {
     throw new Error("Invalid email");
   }
 };
@@ -371,6 +496,7 @@ Together, this system provides end-to-end connection liveness guarantees without
 | **Automatic Reconnect**  | ✅                       | ✅                              | ✅                  | ✅              | ❌                   | ❌                      |
 | **Redis Pub/Sub**        | ✅ Client subscription   | ⚠️ Server-side only             | ❌                  | ✅              | ❌                   | ❌                      |
 | **History on Subscribe** | ✅ Optional Redis-backed | ❌                              | ❌                  | ⚠️ Streams only | ⚠️ DIY               | ❌                      |
+| **Record Subscriptions** | ✅ Versioned + Patchable | ❌                              | ❌                  | ⚠️ Raw records  | ❌                   | ❌                      |
 | **Typescript-First**     | ✅ Yes, mostly           | ⚠️ Mixed                        | ✅                  | ⚠️              | ⚠️                   | ❌                      |
 | **Scalability**          | ✅ Horizontal via Redis  | ✅ Horizontal via Redis Adapter | ✅                  | ✅              | ⚠️ Manual            | ✅ But no sync          |
 | **Target Use Case**      | Real-time/generic async  | Real-time apps, chat            | Multiplayer games   | Pub/Sub, IoT    | Anything (low-level) | Anything (perf-focused) |

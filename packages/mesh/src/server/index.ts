@@ -3,12 +3,17 @@ import { v4 as uuidv4 } from "uuid";
 import { Redis, type RedisOptions } from "ioredis";
 import { WebSocket, WebSocketServer, type ServerOptions } from "ws";
 import { RoomManager } from "./room-manager";
+import { RecordManager } from "./record-manager";
 import { ConnectionManager } from "./connection-manager";
 import { CodeError, Status } from "../client";
 import { Connection } from "./connection";
 import { parseCommand, type Command } from "../common/message";
+import type { Operation } from "fast-json-patch";
+
+export { RecordManager }; // Export RecordManager
 
 const PUB_SUB_CHANNEL_PREFIX = "mesh:pubsub:";
+const RECORD_PUB_SUB_CHANNEL = "mesh:record-updates";
 
 export class MeshContext<T = any> {
   server: MeshServer;
@@ -36,6 +41,13 @@ export type SocketMiddleware = (
 type PubSubMessagePayload = {
   targetConnectionIds: string[];
   command: Command;
+};
+
+type RecordUpdatePubSubPayload = {
+  recordId: string;
+  newValue?: any;
+  patch?: Operation[];
+  version: number;
 };
 
 export type MeshServerOptions = ServerOptions & {
@@ -77,14 +89,24 @@ export class MeshServer extends WebSocketServer {
   pubClient: Redis;
   subClient: Redis;
   roomManager: RoomManager;
+  recordManager: RecordManager;
   connectionManager: ConnectionManager;
   serverOptions: MeshServerOptions;
   status: Status = Status.OFFLINE;
   private exposedChannels: ChannelPattern[] = [];
+  private exposedRecords: ChannelPattern[] = [];
   private channelSubscriptions: { [channel: string]: Set<Connection> } = {};
+  private recordSubscriptions: Map<
+    string, // recordId
+    Map<string, "patch" | "full"> // connectionId -> mode
+  > = new Map();
   private channelGuards: Map<
     ChannelPattern,
     (connection: Connection, channel: string) => Promise<boolean> | boolean
+  > = new Map();
+  private recordGuards: Map<
+    ChannelPattern,
+    (connection: Connection, recordId: string) => Promise<boolean> | boolean
   > = new Map();
   private _isShuttingDown = false;
 
@@ -138,6 +160,7 @@ export class MeshServer extends WebSocketServer {
     this.subClient = this.redis.duplicate();
 
     this.roomManager = new RoomManager(this.redis);
+    this.recordManager = new RecordManager(this.redis);
     this.connectionManager = new ConnectionManager(
       this.pubClient,
       this.instanceId,
@@ -159,6 +182,7 @@ export class MeshServer extends WebSocketServer {
     });
 
     this.registerBuiltinCommands();
+    this.registerRecordCommands(); // Add this line
     this.applyListeners();
   }
 
@@ -180,10 +204,13 @@ export class MeshServer extends WebSocketServer {
     const channel = `${PUB_SUB_CHANNEL_PREFIX}${this.instanceId}`;
 
     this._subscriptionPromise = new Promise((resolve, reject) => {
-      this.subClient.subscribe(channel, (err) => {
+      this.subClient.subscribe(channel, RECORD_PUB_SUB_CHANNEL, (err) => {
         if (err) {
           if (!this._isShuttingDown) {
-            console.error(`Failed to subscribe to channel ${channel}:`, err);
+            console.error(
+              `Failed to subscribe to channels ${channel}, ${RECORD_PUB_SUB_CHANNEL}:`,
+              err
+            );
           }
           reject(err);
           return;
@@ -194,13 +221,18 @@ export class MeshServer extends WebSocketServer {
 
     this.subClient.on("message", async (channel, message) => {
       if (channel.startsWith(PUB_SUB_CHANNEL_PREFIX)) {
-        this.handlePubSubMessage(channel, message);
+        this.handleInstancePubSubMessage(channel, message);
+      } else if (channel === RECORD_PUB_SUB_CHANNEL) {
+        this.handleRecordUpdatePubSubMessage(message);
       } else if (this.channelSubscriptions[channel]) {
+        // Handle regular channel subscriptions
         for (const connection of this.channelSubscriptions[channel]) {
-          connection.send({
-            command: "subscription-message",
-            payload: { channel, message },
-          });
+          if (!connection.isDead) {
+            connection.send({
+              command: "subscription-message",
+              payload: { channel, message },
+            });
+          }
         }
       }
     });
@@ -208,7 +240,7 @@ export class MeshServer extends WebSocketServer {
     return this._subscriptionPromise;
   }
 
-  private handlePubSubMessage(channel: string, message: string) {
+  private handleInstancePubSubMessage(channel: string, message: string) {
     try {
       const parsedMessage = JSON.parse(message) as PubSubMessagePayload;
 
@@ -233,6 +265,51 @@ export class MeshServer extends WebSocketServer {
       });
     } catch (err) {
       this.emit("error", new Error(`Failed to parse message: ${message}`));
+    }
+  }
+
+  private handleRecordUpdatePubSubMessage(message: string) {
+    try {
+      const parsedMessage = JSON.parse(message) as RecordUpdatePubSubPayload;
+      const { recordId, newValue, patch, version } = parsedMessage;
+
+      if (!recordId || typeof version !== "number") {
+        throw new Error("Invalid record update message format");
+      }
+
+      const subscribers = this.recordSubscriptions.get(recordId);
+      if (!subscribers) {
+        return; // No local subscribers for this record
+      }
+
+      subscribers.forEach((mode, connectionId) => {
+        const connection =
+          this.connectionManager.getLocalConnection(connectionId);
+        if (connection && !connection.isDead) {
+          if (mode === "patch" && patch) {
+            connection.send({
+              command: "record-update",
+              payload: { recordId, patch, version },
+            });
+          } else if (mode === "full" && newValue !== undefined) {
+            connection.send({
+              command: "record-update",
+              payload: { recordId, full: newValue, version },
+            });
+          }
+        } else if (!connection) {
+          // Clean up stale subscription if connection no longer exists locally
+          subscribers.delete(connectionId);
+          if (subscribers.size === 0) {
+            this.recordSubscriptions.delete(recordId);
+          }
+        }
+      });
+    } catch (err) {
+      this.emit(
+        "error",
+        new Error(`Failed to parse record update message: ${message}`)
+      );
     }
   }
 
@@ -331,6 +408,51 @@ export class MeshServer extends WebSocketServer {
   }
 
   /**
+   * Exposes a record or pattern for client subscriptions, optionally adding a guard function.
+   *
+   * @param {ChannelPattern} recordPattern - The record ID or pattern to expose.
+   * @param {(connection: Connection, recordId: string) => Promise<boolean> | boolean} [guard] - Optional guard function.
+   */
+  exposeRecord(
+    recordPattern: ChannelPattern,
+    guard?: (
+      connection: Connection,
+      recordId: string
+    ) => Promise<boolean> | boolean
+  ): void {
+    this.exposedRecords.push(recordPattern);
+    if (guard) {
+      this.recordGuards.set(recordPattern, guard);
+    }
+  }
+
+  private async isRecordExposed(
+    recordId: string,
+    connection: Connection
+  ): Promise<boolean> {
+    const matchedPattern = this.exposedRecords.find((pattern) =>
+      typeof pattern === "string"
+        ? pattern === recordId
+        : pattern.test(recordId)
+    );
+
+    if (!matchedPattern) {
+      return false;
+    }
+
+    const guard = this.recordGuards.get(matchedPattern);
+    if (guard) {
+      try {
+        return await Promise.resolve(guard(connection, recordId));
+      } catch (e) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Publishes a message to a specified channel and optionally maintains a history of messages.
    *
    * @param {string} channel - The name of the channel to which the message will be published.
@@ -351,6 +473,47 @@ export class MeshServer extends WebSocketServer {
       await this.pubClient.ltrim(`history:${channel}`, 0, parsedHistory);
     }
     await this.pubClient.publish(channel, message);
+  }
+
+  /**
+   * Updates a record, persists it to Redis, increments its version, computes a patch,
+   * and publishes the update via Redis pub/sub.
+   *
+   * @param {string} recordId - The ID of the record to update.
+   * @param {any} newValue - The new value for the record.
+   * @returns {Promise<void>}
+   * @throws {Error} If the update fails.
+   */
+  async publishRecordUpdate(recordId: string, newValue: any): Promise<void> {
+    const updateResult = await this.recordManager.publishUpdate(
+      recordId,
+      newValue
+    );
+
+    if (!updateResult) {
+      return; // No change detected
+    }
+
+    const { patch, version } = updateResult;
+
+    const messagePayload: RecordUpdatePubSubPayload = {
+      recordId,
+      newValue, // Always include newValue for 'full' subscribers
+      patch,
+      version,
+    };
+
+    try {
+      await this.pubClient.publish(
+        RECORD_PUB_SUB_CHANNEL,
+        JSON.stringify(messagePayload)
+      );
+    } catch (err) {
+      this.emit(
+        "error",
+        new Error(`Failed to publish record update for "${recordId}": ${err}`)
+      );
+    }
   }
 
   /**
@@ -410,7 +573,6 @@ export class MeshServer extends WebSocketServer {
         }
         this.channelSubscriptions[channel].add(ctx.connection);
 
-        // Fetch channel history if historyLimit is provided
         let history: string[] = [];
         if (historyLimit && historyLimit > 0) {
           const historyKey = `history:${channel}`;
@@ -448,6 +610,53 @@ export class MeshServer extends WebSocketServer {
     );
   }
 
+  private registerRecordCommands() {
+    this.registerCommand<
+      { recordId: string; mode?: "patch" | "full" },
+      { success: boolean; record?: any; version?: number }
+    >("subscribe-record", async (ctx) => {
+      const { recordId, mode = "full" } = ctx.payload;
+      const connectionId = ctx.connection.id;
+
+      if (!(await this.isRecordExposed(recordId, ctx.connection))) {
+        return { success: false };
+      }
+
+      try {
+        const { record, version } =
+          await this.recordManager.getRecordAndVersion(recordId);
+
+        if (!this.recordSubscriptions.has(recordId)) {
+          this.recordSubscriptions.set(recordId, new Map());
+        }
+        this.recordSubscriptions.get(recordId)!.set(connectionId, mode);
+
+        return { success: true, record, version };
+      } catch (e) {
+        console.error(`Failed to subscribe to record ${recordId}:`, e);
+        return { success: false };
+      }
+    });
+
+    this.registerCommand<{ recordId: string }, boolean>(
+      "unsubscribe-record",
+      async (ctx) => {
+        const { recordId } = ctx.payload;
+        const connectionId = ctx.connection.id;
+        const recordSubs = this.recordSubscriptions.get(recordId);
+
+        if (recordSubs?.has(connectionId)) {
+          recordSubs.delete(connectionId);
+          if (recordSubs.size === 0) {
+            this.recordSubscriptions.delete(recordId);
+          }
+          return true;
+        }
+        return false;
+      }
+    );
+  }
+
   /**
    * Adds an array of middleware functions to a specific command.
    *
@@ -463,6 +672,18 @@ export class MeshServer extends WebSocketServer {
       this.middlewares[command] = this.middlewares[command] || [];
       this.middlewares[command] = middlewares.concat(this.middlewares[command]);
     }
+  }
+
+  private async cleanupRecordSubscriptions(connection: Connection) {
+    const connectionId = connection.id;
+    this.recordSubscriptions.forEach((subscribers, recordId) => {
+      if (subscribers.has(connectionId)) {
+        subscribers.delete(connectionId);
+        if (subscribers.size === 0) {
+          this.recordSubscriptions.delete(recordId);
+        }
+      }
+    });
   }
 
   private async runCommand(
@@ -732,6 +953,7 @@ export class MeshServer extends WebSocketServer {
 
     await this.connectionManager.cleanupConnection(connection);
     await this.roomManager.cleanupConnection(connection);
+    await this.cleanupRecordSubscriptions(connection); // Ensure this line exists
   }
 
   /**

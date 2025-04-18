@@ -4,8 +4,10 @@ import { WebSocket } from "ws";
 import { CodeError } from "../common/codeerror";
 import { Status } from "../common/status";
 import { Connection } from "./connection";
+import type { Operation } from "fast-json-patch";
 
 export { Status } from "../common/status";
+export { applyPatch } from "fast-json-patch";
 
 export type MeshClientOptions = Partial<{
   /**
@@ -60,6 +62,18 @@ export class MeshClient extends EventEmitter {
   options: Required<MeshClientOptions>;
   isReconnecting = false;
   private _status: Status = Status.OFFLINE;
+  private recordSubscriptions: Map<
+    string, // recordId
+    {
+      callback: (update: {
+        full?: any;
+        patch?: Operation[];
+        version: number;
+      }) => void | Promise<void>;
+      localVersion: number;
+      mode: "patch" | "full";
+    }
+  > = new Map();
 
   constructor(url: string, opts: MeshClientOptions = {}) {
     super();
@@ -82,17 +96,31 @@ export class MeshClient extends EventEmitter {
 
   private setupConnectionEvents(): void {
     this.connection.on("message", (data) => {
-      this.emit("message", data);
+      // data is the parsed command object
+      this.emit("message", data); // Emit generic message event
 
-      const systemCommands = [
-        "ping",
-        "pong",
-        "latency",
-        "latency:request",
-        "latency:response",
-      ];
-      if (data.command && !systemCommands.includes(data.command)) {
+      // Handle specific commands first
+      if (data.command === "record-update") {
+        this.handleRecordUpdate(data.payload);
+        // Optionally emit the specific event if needed elsewhere
+        // this.emit(data.command, data.payload);
+      } else if (data.command === "subscription-message") {
+        // Let the specific listener in subscribe() handle this
+        // Emit it here for the existing subscribe logic to work
         this.emit(data.command, data.payload);
+      } else {
+        // Handle other non-system commands by emitting events
+        const systemCommands = [
+          "ping",
+          "pong",
+          "latency",
+          "latency:request",
+          "latency:response",
+          // 'subscription-message' and 'record-update' are handled above
+        ];
+        if (data.command && !systemCommands.includes(data.command)) {
+          this.emit(data.command, data.payload);
+        }
       }
     });
 
@@ -351,6 +379,47 @@ export class MeshClient extends EventEmitter {
     return result;
   }
 
+  private async handleRecordUpdate(payload: {
+    recordId: string;
+    full?: any;
+    patch?: Operation[];
+    version: number;
+  }) {
+    const { recordId, full, patch, version } = payload;
+    const subscription = this.recordSubscriptions.get(recordId);
+
+    if (!subscription) {
+      return;
+    }
+
+    if (patch) {
+      if (version !== subscription.localVersion + 1) {
+        // desync
+        console.warn(
+          `[MeshClient] Desync detected for record ${recordId}. Expected version ${
+            subscription.localVersion + 1
+          }, got ${version}. Resubscribing to request full record.`
+        );
+        // unsubscribe and resubscribe to force a full update
+        await this.unsubscribeRecord(recordId);
+        await this.subscribeRecord(recordId, subscription.callback, {
+          mode: subscription.mode,
+        });
+        return;
+      }
+
+      subscription.localVersion = version;
+      await subscription.callback({ patch, version });
+
+      return;
+    }
+
+    if (full !== undefined) {
+      subscription.localVersion = version;
+      await subscription.callback({ full, version });
+    }
+  }
+
   /**
    * Subscribes to a specific channel and registers a callback to be invoked
    * whenever a message is received on that channel. Optionally retrieves a
@@ -402,5 +471,73 @@ export class MeshClient extends EventEmitter {
    */
   unsubscribe(channel: string): Promise<boolean> {
     return this.command("unsubscribe-channel", { channel });
+  }
+
+  /**
+   * Subscribes to a specific record and registers a callback for updates.
+   *
+   * @param {string} recordId - The ID of the record to subscribe to.
+   * @param {(update: { full?: any; patch?: Operation[]; version: number }) => void | Promise<void>} callback - Function called on updates.
+   * @param {{ mode?: "patch" | "full" }} [options] - Subscription mode ('patch' or 'full', default 'full').
+   * @returns {Promise<{ success: boolean; record: any | null; version: number }>} Initial state of the record.
+   */
+  async subscribeRecord(
+    recordId: string,
+    callback: (update: {
+      full?: any;
+      patch?: Operation[];
+      version: number;
+    }) => void | Promise<void>,
+    options?: { mode?: "patch" | "full" }
+  ): Promise<{ success: boolean; record: any | null; version: number }> {
+    const mode = options?.mode ?? "full";
+
+    try {
+      const result = await this.command("subscribe-record", { recordId, mode });
+
+      if (result.success) {
+        this.recordSubscriptions.set(recordId, {
+          callback,
+          localVersion: result.version,
+          mode,
+        });
+        // Immediately call callback with the initial full record
+        await callback({ full: result.record, version: result.version });
+      }
+
+      return {
+        success: result.success,
+        record: result.record ?? null,
+        version: result.version ?? 0,
+      };
+    } catch (error) {
+      console.error(
+        `[MeshClient] Failed to subscribe to record ${recordId}:`,
+        error
+      );
+      return { success: false, record: null, version: 0 };
+    }
+  }
+
+  /**
+   * Unsubscribes from a specific record.
+   *
+   * @param {string} recordId - The ID of the record to unsubscribe from.
+   * @returns {Promise<boolean>} True if successful, false otherwise.
+   */
+  async unsubscribeRecord(recordId: string): Promise<boolean> {
+    try {
+      const success = await this.command("unsubscribe-record", { recordId });
+      if (success) {
+        this.recordSubscriptions.delete(recordId);
+      }
+      return success;
+    } catch (error) {
+      console.error(
+        `[MeshClient] Failed to unsubscribe from record ${recordId}:`,
+        error
+      );
+      return false;
+    }
   }
 }
