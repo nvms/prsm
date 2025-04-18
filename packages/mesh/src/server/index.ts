@@ -10,8 +10,6 @@ import { Connection } from "./connection";
 import { parseCommand, type Command } from "../common/message";
 import type { Operation } from "fast-json-patch";
 
-export { RecordManager }; // Export RecordManager
-
 const PUB_SUB_CHANNEL_PREFIX = "mesh:pubsub:";
 const RECORD_PUB_SUB_CHANNEL = "mesh:record-updates";
 
