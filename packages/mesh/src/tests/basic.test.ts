@@ -23,7 +23,9 @@ const flushRedis = async () => {
   await redis.quit();
 };
 
-describe("KeepAliveServer", () => {
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("MeshServer", () => {
   const port = 8126;
   let server: MeshServer;
   let clientA: MeshClient;
@@ -128,6 +130,59 @@ describe("KeepAliveServer", () => {
       const roomBMetadata =
         await server.connectionManager.getAllMetadataForRoom("room-b");
       expect(roomBMetadata).toEqual([{ [connectionB.id]: metadataB }]);
+    });
+
+    test("onConnection callback is executed when a client connects", async () => {
+      let connectionReceived: any = null;
+      const connectionPromise = new Promise<void>((resolve) => {
+        server.onConnection((connection) => {
+          connectionReceived = connection;
+          resolve();
+        });
+      });
+
+      await clientA.connect();
+      await connectionPromise;
+
+      expect(connectionReceived).not.toBeNull();
+
+      if (!connectionReceived) {
+        return;
+      }
+
+      expect(connectionReceived.id).toBeDefined();
+      expect(connectionReceived.isDead).toBe(false);
+
+      const connections = server.connectionManager.getLocalConnections();
+      expect(connections).toContain(connectionReceived);
+    });
+
+    test("onDisconnection callback is executed when a client disconnects", async () => {
+      let disconnectedConnection: any = null;
+      const disconnectionPromise = new Promise<void>((resolve) => {
+        server.onDisconnection((connection) => {
+          disconnectedConnection = connection;
+          resolve();
+        });
+      });
+
+      await clientA.connect();
+      await wait(100);
+      const connections = server.connectionManager.getLocalConnections();
+      const connectionBeforeDisconnect = connections[0];
+
+      expect(connectionBeforeDisconnect).toBeDefined();
+      const connectionId = connectionBeforeDisconnect?.id;
+
+      await clientA.close();
+      await disconnectionPromise;
+
+      expect(disconnectedConnection).not.toBeNull();
+
+      if (disconnectedConnection && connectionId) {
+        expect(disconnectedConnection.id).toBe(connectionId);
+        expect(disconnectedConnection.isDead).toBe(true);
+      }
     });
   });
 });

@@ -1089,4 +1089,30 @@ export class MeshServer extends WebSocketServer {
       callback();
     }
   }
+
+  /**
+   * Registers a callback function to be executed when a new connection is established.
+   *
+   * @param {(connection: Connection) => Promise<void> | void} callback - The function to execute when a new connection is established.
+   * @returns {MeshServer} The server instance for method chaining.
+   */
+  onConnection(
+    callback: (connection: Connection) => Promise<void> | void
+  ): MeshServer {
+    this.on("connected", callback);
+    return this;
+  }
+  
+  /**
+   * Registers a callback function to be executed when a connection is closed.
+   *
+   * @param {(connection: Connection) => Promise<void> | void} callback - The function to execute when a connection is closed.
+   * @returns {MeshServer} The server instance for method chaining.
+   */
+  onDisconnection(
+    callback: (connection: Connection) => Promise<void> | void
+  ): MeshServer {
+    this.on("disconnected", callback);
+    return this;
+  }
 }

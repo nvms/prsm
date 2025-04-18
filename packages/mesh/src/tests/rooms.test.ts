@@ -23,7 +23,7 @@ const flushRedis = async () => {
   await redis.quit();
 };
 
-describe("KeepAliveServer", () => {
+describe("MeshServer", () => {
   const port = 8128;
   let server: MeshServer;
   let clientA: MeshClient;
