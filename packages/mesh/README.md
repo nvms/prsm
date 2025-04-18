@@ -448,7 +448,7 @@ Client-side configuration looks like this:
 
 ```ts
 const client = new MeshClient("ws://localhost:8080", {
-  pingTimeout: 30000, // ms between ping timeout checks
+  pingTimeout: 30000, // ms between ping timeout checks - should match the server's pingInterval
   maxMissedPings: 1, // how many consecutive pings can be missed before reconnecting (default: 1)
   shouldReconnect: true, // auto-reconnect when connection is lost
   reconnectInterval: 2000, // ms between reconnection attempts
