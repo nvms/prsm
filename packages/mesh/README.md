@@ -70,23 +70,23 @@ console.log(response); // "echo: Hello!"
 Mesh supports multiple real-time patterns—choose where to go next based on your use case:
 
 - **Pub/Sub messaging (e.g. chat, notifications):**  
-  → [Redis Channel Subscriptions](#redis-channel-subscriptions)
+  → [Redis channel subscriptions](#redis-channel-subscriptions)
 
 - **Granular, versioned data sync (e.g. user profiles, dashboards):**  
-  → [Record Subscriptions](#record-subscriptions)
+  → [Record subscriptions](#record-subscriptions)
 
 - **Identify users, store connection info, or manage rooms:**  
-  → [Metadata](#metadata) and [Room Metadata](#room-metadata)
+  → [Metadata](#metadata) and [Room metadata](#room-metadata)
 
 - **Control access or validate inputs across commands:**  
-  → [Command Middleware](#command-middleware)
+  → [Command middleware](#command-middleware)
 
 Want to see how messages flow across servers?  
-→ [Distributed Messaging Architecture](#distributed-messaging-architecture)
+→ [Distributed messaging architecture](#distributed-messaging-architecture)
 
 ## Who is this for?
 
-The 95% of real-world apps that need real-time sync but don't want to build their own protocol, state engine, or distributed infrastructure. If you're building something that fits into one of the categories below, then this should be a good fit:
+The 95% of real-world apps that need real-time sync—but don't want to build their own protocol, state engine, or distributed infrastructure. If you're building something like the examples below, Mesh is probably a great fit:
 
 **Collaborative apps**
 - Live cursors
@@ -106,7 +106,7 @@ The 95% of real-world apps that need real-time sync but don't want to build thei
 **Turn-based or async games**
 - Multiplayer puzzles
 - Card games
-- Structured multiplayer game state (e.g. inventories, turns, positions, shared resources, etc.)
+- Structured multiplayer game state (e.g. inventories, turns, positions, shared resources)
 
 ## Distributed messaging architecture
 
