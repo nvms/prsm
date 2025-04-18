@@ -1,6 +1,6 @@
 # mesh
 
-Mesh is a command-based WebSocket server and client framework designed for scalable, multi-instance deployments. It uses Redis to coordinate connections, rooms, and metadata across servers, enabling reliable horizontal scaling. Mesh includes built-in ping/latency tracking, automatic reconnection, and a simple command API for clean, asynchronous, RPC-like communication.
+Mesh is a command-based WebSocket framework for real-time apps—whether you're running a single server or a distributed cluster. It uses Redis to coordinate connections, rooms, and shared state across instances, with built-in support for structured commands, latency tracking, and automatic reconnection.
 
 - [Quickstart](#quickstart)
   - [Server](#server)
@@ -81,7 +81,7 @@ Want to see how messages flow across servers?
 
 ## Distributed Messaging Architecture
 
-The diagram below illustrates how Mesh handles communication across multiple server instances. It uses Redis to look up which connections belong to a room, determine their host instances, and routes messages accordingly — either locally or via pub/sub.
+The diagram below shows how Mesh handles communication in a distributed setup. It uses Redis to track which connections belong to which rooms, determine their host servers, and route messages either locally or across servers via pub/sub.
 
 ```mermaid
 sequenceDiagram
@@ -181,14 +181,12 @@ This feature is great for:
 
 - Real-time chat and collaboration
 - Live system dashboards
-- Cross-instance pub/sub messaging
+- Pub/sub messaging across distributed server instances
 - Notification feeds with instant context
 
 ### Metadata
 
-You can associate data like user IDs, tokens, or custom attributes with a connection using the `setMetadata` method. This metadata is stored in Redis and accessible from any server instance, making it ideal for identifying users, managing permissions, or persisting session-related data across distributed deployments.
-
-Metadata is stored in Redis, so it can be safely accessed from any instance of your server.
+You can associate data like user IDs, tokens, or custom attributes with a connection using the `setMetadata` method. This metadata is stored in Redis, making it ideal for identifying users, managing permissions, or persisting session-related data across a distributed setup. Since it lives in Redis, it’s accessible from any server instance.
 
 ```ts
 server.registerCommand("authenticate", async (ctx) => {
@@ -265,7 +263,7 @@ Room metadata is removed when `clearRoom(roomName)` is called.
 
 Mesh supports subscribing to individual records stored in Redis. When a record changes, clients receive either the full value or a JSON patch describing the update—depending on the selected mode (`full` or `patch`).
 
-Subscriptions are multi-instance aware, versioned for integrity, and efficient at scale. Each connected client can independently choose its preferred mode.
+Subscriptions work across multiple server instances, support versioning for consistency, and scale efficiently. Each client can choose its preferred mode independently.
 
 ### Server Configuration
 
