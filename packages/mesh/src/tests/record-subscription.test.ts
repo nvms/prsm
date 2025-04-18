@@ -39,6 +39,8 @@ describe("Record Subscription", () => {
     server = createTestServer(port);
     server.exposeRecord(/^test:record:.*/);
     server.exposeRecord("guarded:record");
+    server.exposeWritableRecord(/^writable:record:.*/);
+    server.exposeWritableRecord("guarded:writable");
     await server.ready();
 
     client1 = new MeshClient(`ws://localhost:${port}`);
@@ -320,5 +322,163 @@ describe("Record Subscription", () => {
       },
       30000
     );
+  });
+
+  test("client can write to an exposed writable record", async () => {
+    const recordId = "writable:record:1";
+    await client1.connect();
+    await client2.connect();
+
+    const updatesClient2: any[] = [];
+    const callbackClient2 = vi.fn((update: any) => {
+      updatesClient2.push(update);
+    });
+
+    // check subscription success and initial call
+    const subResult = await client2.subscribeRecord(recordId, callbackClient2); // Subscribe before write
+    expect(subResult.success).toBe(true);
+    expect(subResult.record).toBeNull();
+    expect(subResult.version).toBe(0);
+    expect(callbackClient2).toHaveBeenCalledTimes(1);
+    expect(callbackClient2).toHaveBeenCalledWith({
+      recordId,
+      full: null,
+      version: 0,
+    });
+
+    const initialData = { value: "initial" };
+    // client 1 writes
+    const success = await client1.publishRecordUpdate(recordId, initialData);
+    expect(success).toBe(true);
+
+    await wait(150);
+
+    // client 2 received the update (initial call + 1 update)
+    expect(callbackClient2).toHaveBeenCalledTimes(2);
+    expect(updatesClient2.length).toBe(2);
+
+    expect(updatesClient2[1]).toEqual({
+      recordId,
+      full: initialData,
+      version: 1,
+    });
+
+    // verify server state
+    const { record, version } = await server.recordManager.getRecordAndVersion(
+      recordId
+    );
+    expect(record).toEqual(initialData);
+    expect(version).toBe(1);
+  });
+
+  test("client cannot write to a non-writable record (read-only exposed)", async () => {
+    const recordId = "test:record:readonly"; // exposed via exposeRecord, not exposeWritableRecord
+    await client1.connect();
+
+    const initialData = { value: "attempt" };
+    const success = await client1.publishRecordUpdate(recordId, initialData);
+    expect(success).toBe(false);
+
+    // verify server state hasn't changed
+    const { record, version } = await server.recordManager.getRecordAndVersion(
+      recordId
+    );
+    expect(record).toBeNull();
+    expect(version).toBe(0);
+  });
+
+  test("client cannot write to a record not exposed at all", async () => {
+    const recordId = "not:exposed:at:all";
+    await client1.connect();
+
+    const initialData = { value: "attempt" };
+    const success = await client1.publishRecordUpdate(recordId, initialData);
+    expect(success).toBe(false);
+
+    const { record, version } = await server.recordManager.getRecordAndVersion(
+      recordId
+    );
+    expect(record).toBeNull();
+    expect(version).toBe(0);
+  });
+
+  test("writable record guard prevents unauthorized writes", async () => {
+    const recordId = "guarded:writable";
+    await client1.connect();
+    await client2.connect();
+
+    const connections = server.connectionManager.getLocalConnections();
+    const connection1Id = connections[0]?.id;
+
+    // only client1 can write this record
+    server.exposeWritableRecord(
+      recordId,
+      (connection, recId) => connection.id === connection1Id
+    );
+
+    const data1 = { value: "from client 1" };
+    const success1 = await client1.publishRecordUpdate(recordId, data1);
+    expect(success1).toBe(true);
+
+    await wait(50);
+    let serverState = await server.recordManager.getRecordAndVersion(recordId);
+    expect(serverState.record).toEqual(data1);
+    expect(serverState.version).toBe(1);
+
+    const data2 = { value: "from client 2" };
+    const success2 = await client2.publishRecordUpdate(recordId, data2);
+    expect(success2).toBe(false);
+
+    await wait(50);
+    serverState = await server.recordManager.getRecordAndVersion(recordId);
+    expect(serverState.record).toEqual(data1); // unchanged
+    expect(serverState.version).toBe(1); // unchanged
+  });
+
+  test("update from client write propagates to other subscribed clients", async () => {
+    const recordId = "writable:record:propagate";
+    await client1.connect(); // writer
+    await client2.connect(); // subscriber
+
+    const updatesClient2: any[] = [];
+    const callbackClient2 = vi.fn((update: any) => {
+      updatesClient2.push(update);
+    });
+
+    const subResult = await client2.subscribeRecord(recordId, callbackClient2, {
+      mode: "patch",
+    });
+    expect(subResult.success).toBe(true);
+    expect(subResult.record).toBeNull();
+    expect(subResult.version).toBe(0);
+    expect(callbackClient2).toHaveBeenCalledTimes(1);
+    expect(callbackClient2).toHaveBeenCalledWith({
+      recordId,
+      full: null,
+      version: 0,
+    });
+
+    // client 1 writes
+    const data1 = { count: 1 };
+    await client1.publishRecordUpdate(recordId, data1);
+    await wait(100);
+
+    const data2 = { count: 1, name: "added" };
+    await client1.publishRecordUpdate(recordId, data2);
+    await wait(150);
+
+    // client 2 received the patches (initial call + 2 patches)
+    expect(callbackClient2).toHaveBeenCalledTimes(3);
+    expect(updatesClient2.length).toBe(3);
+    expect(updatesClient2[1]).toEqual({
+      recordId,
+      patch: [{ op: "add", path: "/count", value: 1 }],
+      version: 1,
+    });
+    expect(updatesClient2[2]).toEqual({
+      recordId,
+      patch: [{ op: "add", path: "/name", value: "added" }],
+      version: 2,
+    });
   });
 });

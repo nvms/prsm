@@ -13,8 +13,10 @@ Mesh is a command-based WebSocket framework for real-time apps—whether you're 
   - [Metadata](#metadata)
   - [Room Metadata](#room-metadata)
 - [Record Subscriptions](#record-subscriptions)
-  - [Server Configuration](#server-configuration-1)
-  - [Updating Records](#updating-records)
+  - [Server Configuration (Read-Only)](#server-configuration-read-only)
+  - [Server Configuration (Writable)](#server-configuration-writable)
+  - [Updating Records (Server-Side)](#updating-records-server-side)
+  - [Updating Records (Client-Side)](#updating-records-client-side)
   - [Client Usage — Full Mode (default)](#client-usage--full-mode-default)
   - [Client Usage — Patch Mode](#client-usage--patch-mode)
   - [Unsubscribing](#unsubscribing)
@@ -280,9 +282,27 @@ server.exposeRecord(/^private:.+$/, async (conn, recordId) => {
 });
 ```
 
-### Updating Records
+### Server Configuration (Writable)
 
-Use `publishRecordUpdate()` to update the stored value, increment the version, generate a patch, and broadcast to all subscribed clients.
+To allow clients to *subscribe* and also *modify* records, use `exposeWritableRecord`. This also accepts optional guard functions to control *write* access:
+
+```ts
+// Allow any connected client to write to cursor records
+server.exposeWritableRecord(/^cursor:user:\d+$/);
+
+// Allow only authenticated users to write to their profile
+server.exposeWritableRecord(/^profile:user:\d+$/, async (conn, recordId) => {
+  const meta = await server.connectionManager.getMetadata(conn);
+  const recordUserId = recordId.split(':').pop();
+  return meta?.userId === recordUserId; // Check if user ID matches record ID
+});
+```
+
+**Important:** Records exposed via `exposeWritableRecord` are automatically readable (subscribable) by clients. You don't need to call `exposeRecord` for the same pattern. However, if you want different guards for reading and writing, you can expose the same pattern with both methods, each with its own guard.
+
+### Updating Records (Server-Side)
+
+Use `publishRecordUpdate()` from the server to update the stored value, increment the version, generate a patch, and broadcast to all subscribed clients (both read-only and writable).
 
 ```ts
 await server.publishRecordUpdate("user:123", {
@@ -297,6 +317,29 @@ await server.publishRecordUpdate("user:123", {
   status: "active",
 });
 ```
+
+### Updating Records (Client-Side)
+
+If a record has been exposed as writable via `exposeWritableRecord` on the server (and any guard function passes), clients can publish updates using the `publishRecordUpdate` method:
+
+```ts
+const userId = '123';
+const success = await client.publishRecordUpdate(`cursor:user:${userId}`, {
+  x: 100,
+  y: 250,
+  timestamp: Date.now(),
+});
+
+if (success) {
+  console.log("Cursor position updated successfully.");
+} else {
+  console.error("Failed to update cursor position (maybe permission denied?).");
+}
+```
+
+This client-initiated update will be processed by the server, which then uses the same `publishRecordUpdate` mechanism internally to persist the change and broadcast it (as a full value or patch) to all other subscribed clients. The method returns `true` if the server accepted the write, and `false` if it was rejected (e.g., due to a failed guard).
+
+**Note:** When a client publishes an update to a record using `publishRecordUpdate`, it will also receive that update through its subscription callback just like any other client. This ensures consistency and simplifies update handling. If your app logic already applies local updates optimistically, you may choose to ignore redundant self-updates in your callback.
 
 ### Client Usage — Full Mode (default)
 

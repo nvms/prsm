@@ -93,6 +93,7 @@ export class MeshServer extends WebSocketServer {
   status: Status = Status.OFFLINE;
   private exposedChannels: ChannelPattern[] = [];
   private exposedRecords: ChannelPattern[] = [];
+  private exposedWritableRecords: ChannelPattern[] = []; // New: Track writable records
   private channelSubscriptions: { [channel: string]: Set<Connection> } = {};
   private recordSubscriptions: Map<
     string, // recordId
@@ -103,6 +104,11 @@ export class MeshServer extends WebSocketServer {
     (connection: Connection, channel: string) => Promise<boolean> | boolean
   > = new Map();
   private recordGuards: Map<
+    ChannelPattern,
+    (connection: Connection, recordId: string) => Promise<boolean> | boolean
+  > = new Map();
+  private writableRecordGuards: Map<
+    // New: Guards for writable records
     ChannelPattern,
     (connection: Connection, recordId: string) => Promise<boolean> | boolean
   > = new Map();
@@ -223,7 +229,6 @@ export class MeshServer extends WebSocketServer {
       } else if (channel === RECORD_PUB_SUB_CHANNEL) {
         this.handleRecordUpdatePubSubMessage(message);
       } else if (this.channelSubscriptions[channel]) {
-        // Handle regular channel subscriptions
         for (const connection of this.channelSubscriptions[channel]) {
           if (!connection.isDead) {
             connection.send({
@@ -276,8 +281,9 @@ export class MeshServer extends WebSocketServer {
       }
 
       const subscribers = this.recordSubscriptions.get(recordId);
+
       if (!subscribers) {
-        return; // No local subscribers for this record
+        return;
       }
 
       subscribers.forEach((mode, connectionId) => {
@@ -296,7 +302,6 @@ export class MeshServer extends WebSocketServer {
             });
           }
         } else if (!connection) {
-          // Clean up stale subscription if connection no longer exists locally
           subscribers.delete(connectionId);
           if (subscribers.size === 0) {
             this.recordSubscriptions.delete(recordId);
@@ -384,7 +389,6 @@ export class MeshServer extends WebSocketServer {
     channel: string,
     connection: Connection
   ): Promise<boolean> {
-    // First check if the channel matches any exposed pattern
     const matchedPattern = this.exposedChannels.find((pattern) =>
       typeof pattern === "string" ? pattern === channel : pattern.test(channel)
     );
@@ -428,7 +432,69 @@ export class MeshServer extends WebSocketServer {
     recordId: string,
     connection: Connection
   ): Promise<boolean> {
-    const matchedPattern = this.exposedRecords.find((pattern) =>
+    const readPattern = this.exposedRecords.find((pattern) =>
+      typeof pattern === "string"
+        ? pattern === recordId
+        : pattern.test(recordId)
+    );
+
+    let canRead = false;
+    if (readPattern) {
+      const guard = this.recordGuards.get(readPattern);
+      if (guard) {
+        try {
+          canRead = await Promise.resolve(guard(connection, recordId));
+        } catch (e) {
+          canRead = false;
+        }
+      } else {
+        canRead = true;
+      }
+    }
+
+    if (canRead) {
+      return true;
+    }
+
+    // if exposed as writable, it is implicitly readable
+    const writePattern = this.exposedWritableRecords.find((pattern) =>
+      typeof pattern === "string"
+        ? pattern === recordId
+        : pattern.test(recordId)
+    );
+
+    // If exposed as writable, it's readable. No need to check the *write* guard here.
+    if (writePattern) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Exposes a record or pattern for client writes, optionally adding a guard function.
+   *
+   * @param {ChannelPattern} recordPattern - The record ID or pattern to expose as writable.
+   * @param {(connection: Connection, recordId: string) => Promise<boolean> | boolean} [guard] - Optional guard function.
+   */
+  exposeWritableRecord(
+    recordPattern: ChannelPattern,
+    guard?: (
+      connection: Connection,
+      recordId: string
+    ) => Promise<boolean> | boolean
+  ): void {
+    this.exposedWritableRecords.push(recordPattern);
+    if (guard) {
+      this.writableRecordGuards.set(recordPattern, guard);
+    }
+  }
+
+  private async isRecordWritable(
+    recordId: string,
+    connection: Connection
+  ): Promise<boolean> {
+    const matchedPattern = this.exposedWritableRecords.find((pattern) =>
       typeof pattern === "string"
         ? pattern === recordId
         : pattern.test(recordId)
@@ -438,7 +504,7 @@ export class MeshServer extends WebSocketServer {
       return false;
     }
 
-    const guard = this.recordGuards.get(matchedPattern);
+    const guard = this.writableRecordGuards.get(matchedPattern);
     if (guard) {
       try {
         return await Promise.resolve(guard(connection, recordId));
@@ -489,14 +555,14 @@ export class MeshServer extends WebSocketServer {
     );
 
     if (!updateResult) {
-      return; // No change detected
+      return;
     }
 
     const { patch, version } = updateResult;
 
     const messagePayload: RecordUpdatePubSubPayload = {
       recordId,
-      newValue, // Always include newValue for 'full' subscribers
+      newValue,
       patch,
       version,
     };
@@ -653,6 +719,33 @@ export class MeshServer extends WebSocketServer {
         return false;
       }
     );
+
+    // New command for client-initiated record updates
+    this.registerCommand<
+      { recordId: string; newValue: any },
+      { success: boolean }
+    >("publish-record-update", async (ctx) => {
+      const { recordId, newValue } = ctx.payload;
+
+      if (!(await this.isRecordWritable(recordId, ctx.connection))) {
+        throw new CodeError(
+          `Record "${recordId}" is not writable by this connection.`,
+          "EACCESS",
+          "PermissionError"
+        );
+      }
+
+      try {
+        await this.publishRecordUpdate(recordId, newValue);
+        return { success: true };
+      } catch (e: any) {
+        throw new CodeError(
+          `Failed to publish update for record "${recordId}": ${e.message}`,
+          "EUPDATE",
+          "UpdateError"
+        );
+      }
+    });
   }
 
   /**

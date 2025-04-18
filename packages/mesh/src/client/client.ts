@@ -97,27 +97,19 @@ export class MeshClient extends EventEmitter {
 
   private setupConnectionEvents(): void {
     this.connection.on("message", (data) => {
-      // data is the parsed command object
-      this.emit("message", data); // Emit generic message event
+      this.emit("message", data);
 
-      // Handle specific commands first
       if (data.command === "record-update") {
         this.handleRecordUpdate(data.payload);
-        // Optionally emit the specific event if needed elsewhere
-        // this.emit(data.command, data.payload);
       } else if (data.command === "subscription-message") {
-        // Let the specific listener in subscribe() handle this
-        // Emit it here for the existing subscribe logic to work
         this.emit(data.command, data.payload);
       } else {
-        // Handle other non-system commands by emitting events
         const systemCommands = [
           "ping",
           "pong",
           "latency",
           "latency:request",
           "latency:response",
-          // 'subscription-message' and 'record-update' are handled above
         ];
         if (data.command && !systemCommands.includes(data.command)) {
           this.emit(data.command, data.payload);
@@ -503,7 +495,7 @@ export class MeshClient extends EventEmitter {
           localVersion: result.version,
           mode,
         });
-        // Immediately call callback with the initial full record
+
         await callback({
           recordId,
           full: result.record,
@@ -541,6 +533,29 @@ export class MeshClient extends EventEmitter {
     } catch (error) {
       console.error(
         `[MeshClient] Failed to unsubscribe from record ${recordId}:`,
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Publishes an update to a specific record if the client has write permissions.
+   *
+   * @param {string} recordId - The ID of the record to update.
+   * @param {any} newValue - The new value for the record.
+   * @returns {Promise<boolean>} True if the update was successfully published, false otherwise.
+   */
+  async publishRecordUpdate(recordId: string, newValue: any): Promise<boolean> {
+    try {
+      const result = await this.command("publish-record-update", {
+        recordId,
+        newValue,
+      });
+      return result.success === true;
+    } catch (error) {
+      console.error(
+        `[MeshClient] Failed to publish update for record ${recordId}:`,
         error
       );
       return false;
