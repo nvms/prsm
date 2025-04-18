@@ -77,7 +77,7 @@ Mesh supports multiple real-time patterns—choose where to go next based on you
 - **Pub/Sub messaging (e.g. chat, notifications):**
   → [Redis channel subscriptions](#redis-channel-subscriptions)
 
-- **Real-time presence tracking (e.g. who's online, typing indicators):**
+- **Real-time presence tracking (e.g. who's online, who's in what room):**
   → [Presence](#presence)
 
 - **Granular, versioned data sync (e.g. user profiles, dashboards):**
@@ -230,7 +230,7 @@ This feature is great for:
 
 ## Presence
 
-Mesh provides a built-in presence system that tracks which connections are present in specific rooms and notifies clients when connections join or leave. This is ideal for building features like "who's online" indicators, typing indicators, or any real-time awareness of other users.
+Mesh provides a built-in presence system that tracks which connections are present in specific rooms and notifies clients when connections join or leave. This is ideal for building features like "who's online" indicators, or any real-time awareness of other users.
 
 > [!NOTE]
 > Presence only tracks *connection IDs*, not metadata. You must join them explicitly if you want to show e.g. usernames, avatars, emails, etc.
