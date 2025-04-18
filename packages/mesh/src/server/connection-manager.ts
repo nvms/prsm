@@ -41,7 +41,7 @@ export class ConnectionManager {
     return `${INSTANCE_CONNECTIONS_KEY_PREFIX}${instanceId}`;
   }
 
-  async deregisterConnection(connection: Connection): Promise<void> {
+  private async deregisterConnection(connection: Connection): Promise<void> {
     const instanceId = await this.getInstanceIdForConnection(connection);
     if (!instanceId) {
       return;
@@ -53,7 +53,7 @@ export class ConnectionManager {
     await pipeline.exec();
   }
 
-  async getInstanceIdForConnection(
+  private async getInstanceIdForConnection(
     connection: Connection
   ): Promise<string | null> {
     return this.redis.hget(CONNECTIONS_HASH_KEY, connection.id);
@@ -87,6 +87,15 @@ export class ConnectionManager {
     return this.redis.smembers(this.getInstanceConnectionsKey(this.instanceId));
   }
 
+  /**
+   * Sets metadata for a given connection in the Redis hash.
+   * Serializes the metadata as a JSON string and stores it under the connection's ID.
+   *
+   * @param {Connection} connection - The connection object whose metadata is being set.
+   * @param {any} metadata - The metadata to associate with the connection.
+   * @returns {Promise<void>} A promise that resolves when the metadata has been successfully set.
+   * @throws {Error} If an error occurs while executing the Redis pipeline.
+   */
   async setMetadata(connection: Connection, metadata: any) {
     const pipeline = this.redis.pipeline();
     pipeline.hset(
@@ -97,11 +106,27 @@ export class ConnectionManager {
     await pipeline.exec();
   }
 
+  /**
+   * Retrieves and parses metadata for the given connection from Redis.
+   *
+   * @param {Connection} connection - The connection object whose metadata is to be retrieved.
+   * @returns {Promise<any|null>} A promise that resolves to the parsed metadata object if found, or null if no metadata exists.
+   * @throws {SyntaxError} If the stored metadata is not valid JSON and fails to parse.
+   * @throws {Error} If a Redis error occurs during retrieval.
+   */
   async getMetadata(connection: Connection) {
     const metadata = await this.redis.hget(CONNECTIONS_HASH_KEY, connection.id);
     return metadata ? JSON.parse(metadata) : null;
   }
 
+  /**
+   * Retrieves metadata for all available connections by fetching all connection IDs,
+   * obtaining their associated metadata, and parsing the metadata as JSON.
+   *
+   * @returns {Promise<Array<{ [connectionId: string]: any }>>}
+   *   A promise that resolves to an array of objects, each mapping a connection ID to its parsed metadata object, or `null` if no metadata is available.
+   * @throws {Error} If an error occurs while fetching connection IDs, retrieving metadata, or parsing JSON.
+   */
   async getAllMetadata(): Promise<Array<{ [connectionId: string]: any }>> {
     const connectionIds = await this.getAllConnectionIds();
     const metadata = await this.getInstanceIdsForConnections(connectionIds);
@@ -110,6 +135,16 @@ export class ConnectionManager {
     }));
   }
 
+  /**
+   * Retrieves all metadata objects for each connection in the specified room.
+   * Each returned object maps a connection ID to its associated metadata, which is parsed from JSON.
+   * If no metadata is found for a connection, the value is set to null.
+   *
+   * @param {string} roomName - The name of the room for which to retrieve connection metadata.
+   * @returns {Promise<Array<{ [connectionId: string]: any }>>} A promise that resolves to an array of objects,
+   * each containing a connection ID as the key and its metadata as the value (or null if not available).
+   * @throws {Error} If there is an error retrieving connection IDs or metadata, the promise will be rejected with the error.
+   */
   async getAllMetadataForRoom(
     roomName: string
   ): Promise<Array<{ [connectionId: string]: any }>> {
