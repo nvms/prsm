@@ -5,27 +5,29 @@ Mesh is a command-based WebSocket framework for real-time apps—whether you're 
 * [Quickstart](#quickstart)
   * [Server](#server)
   * [Client](#client)
-  * [Next Steps](#next-steps)
-* [Distributed Messaging Architecture](#distributed-messaging-architecture)
-  * [Redis Channel Subscriptions](#redis-channel-subscriptions)
-    * [Server Configuration](#server-configuration)
-    * [Server Publishing](#server-publishing)
-    * [Client Usage](#client-usage)
+  * [Next steps](#next-steps)
+* [Who is this for?](#who-is-this-for)
+* [Distributed messaging architecture](#distributed-messaging-architecture)
+  * [Redis channel subscriptions](#redis-channel-subscriptions)
+    * [Server configuration](#server-configuration)
+    * [Server publishing](#server-publishing)
+    * [Client usage](#client-usage)
   * [Metadata](#metadata)
-  * [Room Metadata](#room-metadata)
-* [Record Subscriptions](#record-subscriptions)
-  * [Server Configuration](#server-configuration-1)
-  * [Server Configuration (Writable)](#server-configuration-writable)
-  * [Updating Records (Server-Side)](#updating-records-server-side)
-  * [Updating Records (Client-Side)](#updating-records-client-side)
-  * [Client Usage — Full Mode (default)](#client-usage--full-mode-default)
-  * [Client Usage — Patch Mode](#client-usage--patch-mode)
+  * [Room metadata](#room-metadata)
+* [Record subscriptions](#record-subscriptions)
+  * [Server configuration](#server-configuration-1)
+  * [Server configuration (writable)](#server-configuration-writable)
+  * [Updating records (server-side)](#updating-records-server-side)
+  * [Updating records (client-side)](#updating-records-client-side)
+  * [Client usage — full mode (default)](#client-usage--full-mode-default)
+  * [Client usage — patch mode](#client-usage--patch-mode)
   * [Unsubscribing](#unsubscribing)
-  * [Versioning and Resync](#versioning-and-resync)
-* [Command Middleware](#command-middleware)
-* [Latency Tracking and Connection Liveness](#latency-tracking-and-connection-liveness)
-  * [Server-Side Configuration](#server-side-configuration)
-  * [Client-Side Configuration](#client-side-configuration)
+  * [Versioning and resync](#versioning-and-resync)
+  * [Why you probably don't need client-side diffing](#why-you-probably-dont-need-client-side-diffing)
+* [Command middleware](#command-middleware)
+* [Latency tracking and connection liveness](#latency-tracking-and-connection-liveness)
+  * [Server-side configuration](#server-side-configuration)
+  * [Client-side configuration](#client-side-configuration)
 * [Comparison](#comparison)
 
 ## Quickstart
@@ -63,7 +65,7 @@ const response = await client.command("echo", "Hello!");
 console.log(response); // "echo: Hello!"
 ```
 
-### Next Steps
+### Next steps
 
 Mesh supports multiple real-time patterns—choose where to go next based on your use case:
 
@@ -82,7 +84,31 @@ Mesh supports multiple real-time patterns—choose where to go next based on you
 Want to see how messages flow across servers?  
 → [Distributed Messaging Architecture](#distributed-messaging-architecture)
 
-## Distributed Messaging Architecture
+## Who is this for?
+
+The 95% of real-world apps that need real-time sync but don't want to build their own protocol, state engine, or distributed infrastructure. If you're building something that fits into one of the categories below, then this should be a good fit:
+
+**Collaborative apps**
+- Live cursors
+- Shared whiteboards or form editors
+- Session co-browsing
+
+**Dashboards and control panels**
+- IoT device dashboards
+- Live analytics or system monitors
+- Stock tickers
+
+**Real-time social features**
+- Chat, presence indicators
+- Typing indicators
+- Notification feeds
+
+**Turn-based or async games**
+- Multiplayer puzzles
+- Card games
+- Structured multiplayer game state (e.g. inventories, turns, positions, shared resources, etc.)
+
+## Distributed messaging architecture
 
 The diagram below shows how Mesh handles communication in a distributed setup. It uses Redis to track which connections belong to which rooms, determine their host servers, and route messages either locally or across servers via pub/sub.
 
@@ -117,11 +143,11 @@ sequenceDiagram
   end
 ```
 
-### Redis Channel Subscriptions
+### Redis channel subscriptions
 
 Mesh lets clients subscribe to Redis pub/sub channels and receive messages directly over their WebSocket connection. When subscribing, clients can optionally request recent message history.
 
-#### Server Configuration
+#### Server configuration
 
 Expose the channels you want to allow subscriptions to:
 
@@ -137,7 +163,7 @@ server.exposeChannel(/^private:chat:.+$/, async (conn, channel) => {
 });
 ```
 
-#### Server Publishing
+#### Server publishing
 
 To publish messages to a channel (which subscribed clients will receive), use the `publishToChannel` method. You can optionally store a history of recent messages in Redis.
 
@@ -158,7 +184,7 @@ await server.publishToChannel(
 
 The `history` parameter tells Mesh to store the message in a Redis list (`history:<channel>`) and trim the list to the specified size, ensuring only the most recent messages are kept. Clients subscribing with the `historyLimit` option will receive these historical messages upon connection.
 
-#### Client Usage
+#### Client usage
 
 ```ts
 const { success, history } = await client.subscribe(
@@ -231,7 +257,7 @@ const metadata = await server.connectionManager.getAllMetadataForRoom(roomName);
 // [{ [connectionId]: { userId, token } }, ...]
 ```
 
-### Room Metadata
+### Room metadata
 
 Similar to connection metadata, Mesh allows you to associate arbitrary data with rooms. This is useful for storing room-specific information like topics, settings, or ownership details. Room metadata is also stored in Redis and accessible across all server instances.
 
@@ -262,13 +288,13 @@ const allRoomMeta = await server.roomManager.getAllMetadata();
 
 Room metadata is removed when `clearRoom(roomName)` is called.
 
-## Record Subscriptions
+## Record subscriptions
 
 Mesh supports subscribing to individual records stored in Redis. When a record changes, clients receive either the full value or a JSON patch describing the update—depending on the selected mode (`full` or `patch`).
 
 Subscriptions work across multiple server instances, support versioning for consistency, and scale efficiently. Each client can choose its preferred mode independently.
 
-### Server Configuration
+### Server configuration
 
 Expose records using exact IDs or regex patterns. You can add optional per-client guard logic:
 
@@ -283,7 +309,7 @@ server.exposeRecord(/^private:.+$/, async (conn, recordId) => {
 });
 ```
 
-### Server Configuration (Writable)
+### Server configuration (writable)
 
 To allow clients to *subscribe* and also *modify* records, use `exposeWritableRecord`. This also accepts optional guard functions to control *write* access:
 
@@ -301,7 +327,7 @@ server.exposeWritableRecord(/^profile:user:\d+$/, async (conn, recordId) => {
 
 **Important:** Records exposed via `exposeWritableRecord` are automatically readable (subscribable) by clients. You don't need to call `exposeRecord` for the same pattern. However, if you want different guards for reading and writing, you can expose the same pattern with both methods, each with its own guard.
 
-### Updating Records (Server-Side)
+### Updating records (server-side)
 
 Use `publishRecordUpdate()` from the server to update the stored value, increment the version, generate a patch, and broadcast to all subscribed clients (both read-only and writable).
 
@@ -319,7 +345,7 @@ await server.publishRecordUpdate("user:123", {
 });
 ```
 
-### Updating Records (Client-Side)
+### Updating records (client-side)
 
 If a record has been exposed as writable via `exposeWritableRecord` on the server (and any guard function passes), clients can publish updates using the `publishRecordUpdate` method:
 
@@ -342,7 +368,7 @@ This client-initiated update will be processed by the server, which then uses th
 
 **Note:** When a client publishes an update to a record using `publishRecordUpdate`, it will also receive that update through its subscription callback just like any other client. This ensures consistency and simplifies update handling. If your app logic already applies local updates optimistically, you may choose to ignore redundant self-updates in your callback.
 
-### Client Usage — Full Mode (default)
+### Client usage — full mode (default)
 
 In `full` mode, the client receives the entire updated record every time. This is simpler to use and ideal for small records or when patching isn't needed.
 
@@ -366,7 +392,7 @@ if (success) {
 }
 ```
 
-### Client Usage — Patch Mode
+### Client usage — patch mode
 
 In `patch` mode, the client receives only changes as JSON patches and must apply them locally. This is especially useful for large records that only change in small ways over time.
 
@@ -406,13 +432,38 @@ await client.unsubscribeRecord("user:123");
 await client.unsubscribeRecord("product:456");
 ```
 
-### Versioning and Resync
+### Versioning and resync
 
 Every update includes a `version`. Clients track the current version and, in `patch` mode, expect `version === localVersion + 1`. If a gap is detected (missed patch), the client will automatically be sent a full record update to resync. It does this by transparently unsubscribing and resubscribing to the record.
 
 This system allows fine-grained, real-time synchronization of distributed state with minimal overhead.
 
-## Command Middleware
+### Why you probably don't need client-side diffing
+
+Some of this was mentioned above, but to reiterate:
+
+Mesh handles all diffing on the server.
+
+When you update a record - whether from the server or a client - the server:
+
+1. Applies the new value
+2. Computes a JSON patch between the old and new values.
+3. Broadcasts the patch (or full value if needed) to all subscribed clients.
+4. Increments and attaches a version number.
+
+Clients simply apply the patch. If any patch is missed (e.g. due to disconnect or version mismatch), the server automatically sends a full record to resynchronize the client.
+
+**This means:**
+
+- Clients don't generate diffs.
+- Clients don't compare old vs. new data.
+- You never need to guess what changed.
+
+All you do is apply the update you receive.
+
+This makes real-time sync easier, safer, and dramatically more scalable—no complex client logic or custom diffing is required.
+
+## Command middleware
 
 Mesh allows you to define middleware functions that run before your command handlers. This is useful for tasks like authentication, validation, logging, or modifying the context before the main command logic executes.
 
@@ -465,7 +516,7 @@ server.registerCommand(
 
 Middleware functions receive the same `MeshContext` object as command handlers and can be asynchronous. If a middleware function throws an error, the execution chain stops, and the error is sent back to the client.
 
-## Latency Tracking and Connection Liveness
+## Latency tracking and connection liveness
 
 Mesh includes a built-in ping/pong system to track latency and detect dead connections. This is implemented at the _application level_ (not via raw WebSocket protocol `ping()` frames) to allow for:
 
@@ -473,7 +524,7 @@ Mesh includes a built-in ping/pong system to track latency and detect dead conne
 - Graceful connection closure and multi-instance Redis cleanup.
 - Fine-tuned control using configurable missed ping/pong thresholds.
 
-### Server-Side Configuration
+### Server-side configuration
 
 By default, the server sends periodic `ping` commands. Clients respond with `pong`. If the server misses more than `maxMissedPongs` consecutive responses, the connection is considered stale and is closed cleanly. This ensures all connection metadata and room membership are safely cleaned up across distributed instances.
 
@@ -491,7 +542,7 @@ const server = new MeshServer({
 
 With the default `maxMissedPongs` value of 1, a client has roughly 2 \* pingInterval time to respond before being disconnected.
 
-### Client-Side Configuration
+### Client-side configuration
 
 On the client, Mesh automatically handles incoming `ping` commands by responding with a `pong`, and resets its internal missed pings counter. If the server stops sending `ping` messages (e.g. due to a dropped connection), the client will increment its missed pings counter. Once the counter exceeds `maxMissedPings`, the client will attempt to reconnect if `shouldReconnect` is enabled.
 
