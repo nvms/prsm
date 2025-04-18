@@ -8,10 +8,10 @@ Mesh is a command-based WebSocket framework for real-time applications. It uses 
   * [Next steps](#next-steps)
 * [Who is this for?](#who-is-this-for)
 * [Distributed messaging architecture](#distributed-messaging-architecture)
-  * [Redis channel subscriptions](#redis-channel-subscriptions)
-    * [Server configuration](#server-configuration)
-    * [Server publishing](#server-publishing)
-    * [Client usage](#client-usage)
+* [Redis channel subscriptions](#redis-channel-subscriptions)
+  * [Server configuration](#server-configuration)
+  * [Server publishing](#server-publishing)
+  * [Client usage](#client-usage)
 * [Presence](#presence)
   * [Server configuration](#server-configuration-1)
   * [Getting presence information (server-side)](#getting-presence-information-server-side)
@@ -158,11 +158,11 @@ sequenceDiagram
   end
 ```
 
-### Redis channel subscriptions
+## Redis channel subscriptions
 
 Mesh lets clients subscribe to Redis pub/sub channels and receive messages directly over their WebSocket connection. When subscribing, clients can optionally request recent message history.
 
-#### Server configuration
+### Server configuration
 
 Expose the channels you want to allow subscriptions to:
 
@@ -178,7 +178,7 @@ server.exposeChannel(/^private:chat:.+$/, async (conn, channel) => {
 });
 ```
 
-#### Server publishing
+### Server publishing
 
 To publish messages to a channel (which subscribed clients will receive), use the `publishToChannel` method. You can optionally store a history of recent messages in Redis.
 
@@ -199,7 +199,7 @@ await server.publishToChannel(
 
 The `history` parameter tells Mesh to store the message in a Redis list (`history:<channel>`) and trim the list to the specified size, ensuring only the most recent messages are kept. Clients subscribing with the `historyLimit` option will receive these historical messages upon connection.
 
-#### Client usage
+### Client usage
 
 ```ts
 const { success, history } = await client.subscribe(
