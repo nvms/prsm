@@ -400,6 +400,10 @@ if (success) {
 
 In `patch` mode, the client receives only changes as JSON patches and must apply them locally. This is especially useful for large records that only change in small ways over time.
 
+> [!NOTE]  
+> Patch mode only works for records that are **objects or arrays**.
+> Primitive values like strings, numbers, or booleans aren't representable as JSON patches, so you should use full mode for those cases.
+
 ```ts
 import { applyPatch } from "@prsm/mesh/client";
 
