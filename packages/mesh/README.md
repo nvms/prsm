@@ -84,7 +84,6 @@ Mesh supports multiple real-time patterns—choose where to go next based on you
 - **Use Mesh with an existing Express server:**  
   → [@prsm/mesh-express](https://github.com/nvms/prsm/tree/main/packages/mesh-express)
 
-
 Want to see how messages flow across servers?  
 → [Distributed messaging architecture](#distributed-messaging-architecture)
 
@@ -93,21 +92,25 @@ Want to see how messages flow across servers?
 The 95% of real-world apps that need real-time sync—but don't want to build their own protocol, state engine, or distributed infrastructure. If you're building something like the examples below, Mesh is probably a great fit:
 
 **Collaborative apps**
+
 - Live cursors
 - Shared whiteboards or form editors
 - Session co-browsing
 
 **Dashboards and control panels**
+
 - IoT device dashboards
 - Live analytics or system monitors
 - Stock tickers
 
 **Real-time social features**
+
 - Chat, presence indicators
 - Typing indicators
 - Notification feeds
 
 **Turn-based or async games**
+
 - Multiplayer puzzles
 - Card games
 - Structured multiplayer game state (e.g. inventories, turns, positions, shared resources)
@@ -221,6 +224,8 @@ This feature is great for:
 
 You can associate data like user IDs, tokens, or custom attributes with a connection using the `setMetadata` method. This metadata is stored in Redis, making it ideal for identifying users, managing permissions, or persisting session-related data across a distributed setup. Since it lives in Redis, it’s accessible from any server instance.
 
+Metadata can be any JSON-serializable object, including nested structures. Updates fully replace the previous value—partial updates (patches) are not supported. While there is no hard size limit, large metadata objects may impact Redis performance.
+
 ```ts
 server.registerCommand("authenticate", async (ctx) => {
   // maybe do some actual authentication here
@@ -265,6 +270,8 @@ const metadata = await server.connectionManager.getAllMetadataForRoom(roomName);
 
 Similar to connection metadata, Mesh allows you to associate arbitrary data with rooms. This is useful for storing room-specific information like topics, settings, or ownership details. Room metadata is also stored in Redis and accessible across all server instances.
 
+Room metadata can also be any JSON-serializable object. Updates replace the entire object—partial merges only occur when using updateMetadata, which shallowly merges the new fields. Like connection metadata, there’s no enforced size limit, but keeping room metadata small is recommended for performance.
+
 ```ts
 // set metadata for a room
 await server.roomManager.setMetadata("lobby", {
@@ -278,8 +285,8 @@ const lobbyMeta = await server.roomManager.getMetadata("lobby");
 
 // update metadata (merges with existing data)
 await server.roomManager.updateMetadata("lobby", {
-  topic: "Updated Topic", // Overwrites existing topic
-  private: false, // Adds new field
+  topic: "Updated Topic", // overwrites existing topic
+  private: false, // adds new field
 });
 
 const updatedLobbyMeta = await server.roomManager.getMetadata("lobby");
@@ -315,7 +322,7 @@ server.exposeRecord(/^private:.+$/, async (conn, recordId) => {
 
 ### Server configuration (writable)
 
-To allow clients to *subscribe* and also *modify* records, use `exposeWritableRecord`. This also accepts optional guard functions to control *write* access:
+To allow clients to _subscribe_ and also _modify_ records, use `exposeWritableRecord`. This also accepts optional guard functions to control _write_ access:
 
 ```ts
 // Allow any connected client to write to cursor records
@@ -324,7 +331,7 @@ server.exposeWritableRecord(/^cursor:user:\d+$/);
 // Allow only authenticated users to write to their profile
 server.exposeWritableRecord(/^profile:user:\d+$/, async (conn, recordId) => {
   const meta = await server.connectionManager.getMetadata(conn);
-  const recordUserId = recordId.split(':').pop();
+  const recordUserId = recordId.split(":").pop();
   return meta?.userId === recordUserId; // Check if user ID matches record ID
 });
 ```
@@ -354,7 +361,7 @@ await server.publishRecordUpdate("user:123", {
 If a record has been exposed as writable via `exposeWritableRecord` on the server (and any guard function passes), clients can publish updates using the `publishRecordUpdate` method:
 
 ```ts
-const userId = '123';
+const userId = "123";
 const success = await client.publishRecordUpdate(`cursor:user:${userId}`, {
   x: 100,
   y: 250,
@@ -371,6 +378,11 @@ if (success) {
 This client-initiated update will be processed by the server, which then uses the same `publishRecordUpdate` mechanism internally to persist the change and broadcast it (as a full value or patch) to all other subscribed clients. The method returns `true` if the server accepted the write, and `false` if it was rejected (e.g., due to a failed guard).
 
 **Note:** When a client publishes an update to a record using `publishRecordUpdate`, it will also receive that update through its subscription callback just like any other client. This ensures consistency and simplifies update handling. If your app logic already applies local updates optimistically, you may choose to ignore redundant self-updates in your callback.
+
+> [!NOTE]  
+> When a client publishes an update to a record using publishRecordUpdate, it will also receive the resulting update through its own subscription callback—just like any other client. This ensures consistency and avoids special-casing updates based on origin.
+>
+> This behavior is always true, unless the client unsubscribed from the record before the update was broadcast. If your client logic applies optimistic updates locally, you may choose to ignore the echoed update if it's redundant.
 
 ### Client usage — full mode (default)
 
