@@ -81,8 +81,9 @@ Mesh supports multiple real-time patterns—choose where to go next based on you
 - **Control access or validate inputs across commands:**  
   → [Command middleware](#command-middleware)
 
-- **Use Mesh with an existing Express server:**
+- **Use Mesh with an existing Express server:**  
   → [@prsm/mesh-express](https://github.com/nvms/prsm/tree/main/packages/mesh-express)
+
 
 Want to see how messages flow across servers?  
 → [Distributed messaging architecture](#distributed-messaging-architecture)
