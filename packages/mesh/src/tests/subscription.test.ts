@@ -50,7 +50,7 @@ describe("Redis Channel Subscription", () => {
   test("client can subscribe to a Redis channel", async () => {
     await client1.connect();
 
-    const result = await client1.subscribe("test:channel", () => {});
+    const result = await client1.subscribeChannel("test:channel", () => {});
     expect(result.success).toBe(true);
     expect(Array.isArray(result.history)).toBe(true);
   });
@@ -58,7 +58,7 @@ describe("Redis Channel Subscription", () => {
   test("client cannot subscribe to an unexposed channel", async () => {
     await client1.connect();
 
-    const result = await client1.subscribe("unexposed:channel", () => {});
+    const result = await client1.subscribeChannel("unexposed:channel", () => {});
     expect(result.success).toBe(false);
     expect(Array.isArray(result.history)).toBe(true);
     expect(result.history.length).toBe(0);
@@ -69,7 +69,7 @@ describe("Redis Channel Subscription", () => {
 
     let receivedMessage: string | null = null;
 
-    await client1.subscribe("test:channel", (message) => {
+    await client1.subscribeChannel("test:channel", (message) => {
       receivedMessage = message;
     });
 
@@ -98,7 +98,7 @@ describe("Redis Channel Subscription", () => {
 
     let messageCount = 0;
 
-    await client1.subscribe("test:channel", () => {
+    await client1.subscribeChannel("test:channel", () => {
       messageCount++;
     });
 
@@ -108,7 +108,7 @@ describe("Redis Channel Subscription", () => {
       setTimeout(resolve, 100);
     });
 
-    const unsubResult = await client1.unsubscribe("test:channel");
+    const unsubResult = await client1.unsubscribeChannel("test:channel");
     expect(unsubResult).toBe(true);
 
     await server.publishToChannel("test:channel", "Message 2");
@@ -127,11 +127,11 @@ describe("Redis Channel Subscription", () => {
     let client1Received: string | null = null;
     let client2Received: string | null = null;
 
-    await client1.subscribe("test:channel", (message) => {
+    await client1.subscribeChannel("test:channel", (message) => {
       client1Received = message;
     });
 
-    await client2.subscribe("test:channel", (message) => {
+    await client2.subscribeChannel("test:channel", (message) => {
       client2Received = message;
     });
 
@@ -162,11 +162,11 @@ describe("Redis Channel Subscription", () => {
     const channel1Messages: string[] = [];
     const channel2Messages: string[] = [];
 
-    await client1.subscribe("test:channel", (message) => {
+    await client1.subscribeChannel("test:channel", (message) => {
       channel1Messages.push(message);
     });
 
-    await client1.subscribe("test:channel2", (message) => {
+    await client1.subscribeChannel("test:channel2", (message) => {
       channel2Messages.push(message);
     });
 
@@ -187,7 +187,7 @@ describe("Redis Channel Subscription", () => {
   test("unsubscribing from a non-subscribed channel returns false", async () => {
     await client1.connect();
 
-    const result = await client1.unsubscribe("not:subscribed");
+    const result = await client1.unsubscribeChannel("not:subscribed");
     expect(result).toBe(false);
   });
 
@@ -206,8 +206,8 @@ describe("Redis Channel Subscription", () => {
       (connection, channel) => connection.id === connection1.id
     );
 
-    const result1 = await client1.subscribe("guarded:channel", () => {});
-    const result2 = await client2.subscribe("guarded:channel", () => {});
+    const result1 = await client1.subscribeChannel("guarded:channel", () => {});
+    const result2 = await client2.subscribeChannel("guarded:channel", () => {});
 
     expect(result1.success).toBe(true);
     expect(result2.success).toBe(false);
@@ -223,7 +223,7 @@ describe("Redis Channel Subscription", () => {
       return true;
     });
 
-    await client1.subscribe("test:channel", () => {});
+    await client1.subscribeChannel("test:channel", () => {});
 
     expect(receivedChannel).toBe("test:channel");
 
@@ -234,7 +234,7 @@ describe("Redis Channel Subscription", () => {
       return true;
     });
 
-    await client1.subscribe("test:channel:1", () => {});
+    await client1.subscribeChannel("test:channel:1", () => {});
 
     expect(receivedChannel).toBe("test:channel:1");
   });
@@ -251,7 +251,7 @@ describe("Redis Channel Subscription", () => {
     
     const receivedMessages: string[] = [];
     
-    const { success, history } = await client1.subscribe("test:channel", (message) => {
+    const { success, history } = await client1.subscribeChannel("test:channel", (message) => {
       receivedMessages.push(message);
     }, { historyLimit: 3 });
     

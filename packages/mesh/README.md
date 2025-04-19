@@ -202,7 +202,7 @@ The `history` parameter tells Mesh to store the message in a Redis list (`histor
 ### Client usage
 
 ```ts
-const { success, history } = await client.subscribe(
+const { success, history } = await client.subscribeChannel(
   "chat:room1",
   (message) => {
     console.log("Live message:", message);
@@ -218,7 +218,7 @@ if (success) {
 Unsubscribe when no longer needed:
 
 ```ts
-await client.unsubscribe("chat:room1");
+await client.unsubscribeChannel("chat:room1");
 ```
 
 This feature is great for:
@@ -275,7 +275,7 @@ When presence is enabled for a room, Mesh automatically:
 ### Getting presence information (server-side)
 
 ```ts
-// Get all connections currently present in a room
+// get all connections currently present in a room
 const connectionIds = await server.presenceManager.getPresentConnections("lobby");
 ```
 
@@ -454,14 +454,14 @@ server.exposeRecord(/^private:.+$/, async (conn, recordId) => {
 To allow clients to _subscribe_ and also _modify_ records, use `exposeWritableRecord`. This also accepts optional guard functions to control _write_ access:
 
 ```ts
-// Allow any connected client to write to cursor records
+// allow any connected client to write to cursor records
 server.exposeWritableRecord(/^cursor:user:\d+$/);
 
-// Allow only authenticated users to write to their profile
+// allow only authenticated users to write to their profile
 server.exposeWritableRecord(/^profile:user:\d+$/, async (conn, recordId) => {
   const meta = await server.connectionManager.getMetadata(conn);
   const recordUserId = recordId.split(":").pop();
-  return meta?.userId === recordUserId; // Check if user ID matches record ID
+  return meta?.userId === recordUserId; // check if user ID matches record ID
 });
 ```
 

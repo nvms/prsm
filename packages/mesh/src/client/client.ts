@@ -452,7 +452,7 @@ export class MeshClient extends EventEmitter {
    * @returns {Promise<{ success: boolean; history: string[] }>} A promise that resolves with the subscription result,
    *          including a success flag and an array of historical messages.
    */
-  subscribe(
+  subscribeChannel(
     channel: string,
     callback: (message: string) => void | Promise<void>,
     options?: { historyLimit?: number }
@@ -490,7 +490,7 @@ export class MeshClient extends EventEmitter {
    * @param {string} channel - The name of the channel to unsubscribe from.
    * @returns {Promise<boolean>} A promise that resolves to true if the unsubscription is successful, or false otherwise.
    */
-  unsubscribe(channel: string): Promise<boolean> {
+  unsubscribeChannel(channel: string): Promise<boolean> {
     return this.command("unsubscribe-channel", { channel });
   }
 
