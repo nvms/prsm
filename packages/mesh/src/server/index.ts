@@ -211,7 +211,8 @@ export class MeshServer extends WebSocketServer {
     const channel = `${PUB_SUB_CHANNEL_PREFIX}${this.instanceId}`;
 
     this._subscriptionPromise = new Promise((resolve, reject) => {
-      this.subClient.subscribe(channel, RECORD_PUB_SUB_CHANNEL, (err) => {
+      this.subClient.subscribe(channel, RECORD_PUB_SUB_CHANNEL);
+      this.subClient.psubscribe("mesh:presence:updates:*", (err) => {
         if (err) {
           if (!this._isShuttingDown) {
             console.error(
@@ -231,18 +232,6 @@ export class MeshServer extends WebSocketServer {
         this.handleInstancePubSubMessage(channel, message);
       } else if (channel === RECORD_PUB_SUB_CHANNEL) {
         this.handleRecordUpdatePubSubMessage(message);
-      } else if (channel.startsWith("mesh:presence:updates:")) {
-        const roomName = channel.replace("mesh:presence:updates:", "");
-        if (this.channelSubscriptions[channel]) {
-          for (const connection of this.channelSubscriptions[channel]) {
-            if (!connection.isDead) {
-              connection.send({
-                command: "mesh/presence-update",
-                payload: JSON.parse(message),
-              });
-            }
-          }
-        }
       } else if (this.channelSubscriptions[channel]) {
         for (const connection of this.channelSubscriptions[channel]) {
           if (!connection.isDead) {
@@ -250,6 +239,34 @@ export class MeshServer extends WebSocketServer {
               command: "mesh/subscription-message",
               payload: { channel, message },
             });
+          }
+        }
+      }
+    });
+
+    this.subClient.on("pmessage", async (pattern, channel, message) => {
+      if (pattern === "mesh:presence:updates:*") {
+        // channel here is the actual channel, e.g., mesh:presence:updates:roomName
+        const subscribers = this.channelSubscriptions[channel];
+        if (subscribers) {
+          try {
+            const payload = JSON.parse(message);
+            subscribers.forEach((connection) => {
+              if (!connection.isDead) {
+                connection.send({
+                  command: "mesh/presence-update",
+                  payload: payload,
+                });
+              } else {
+                // clean up dead connections from subscription list
+                subscribers.delete(connection);
+              }
+            });
+          } catch (e) {
+            this.emit(
+              "error",
+              new Error(`Failed to parse presence update: ${message}`)
+            );
           }
         }
       }
@@ -816,12 +833,6 @@ export class MeshServer extends WebSocketServer {
 
         if (!this.channelSubscriptions[presenceChannel]) {
           this.channelSubscriptions[presenceChannel] = new Set();
-          await new Promise<void>((resolve, reject) => {
-            this.subClient.subscribe(presenceChannel, (err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
         }
 
         this.channelSubscriptions[presenceChannel].add(ctx.connection);
@@ -850,12 +861,6 @@ export class MeshServer extends WebSocketServer {
           this.channelSubscriptions[presenceChannel].delete(ctx.connection);
 
           if (this.channelSubscriptions[presenceChannel].size === 0) {
-            await new Promise<void>((resolve, reject) => {
-              this.subClient.unsubscribe(presenceChannel, (err) => {
-                if (err) reject(err);
-                else resolve();
-              });
-            });
             delete this.channelSubscriptions[presenceChannel];
           }
 

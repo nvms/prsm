@@ -244,3 +244,217 @@ describe("Presence Subscription", () => {
     expect(present).not.toContain(connection2.id);
   });
 });
+
+describe("Presence Subscription (Multiple Instances)", () => {
+  let serverA: MeshServer;
+  let serverB: MeshServer;
+  let clientA: MeshClient;
+  let clientB: MeshClient;
+  let clientC: MeshClient;
+
+  const portA = 8141;
+  const portB = 8142;
+  const roomName = "test:room:multi-instance";
+
+  beforeEach(async () => {
+    await flushRedis();
+
+    serverA = createTestServer(portA);
+    serverB = createTestServer(portB);
+
+    // track presence on both servers
+    [serverA, serverB].forEach((server) => {
+      server.trackPresence(roomName);
+    });
+
+    await serverA.ready();
+    await serverB.ready();
+
+    // register join/leave commands on both servers
+    [serverA, serverB].forEach((server) => {
+      server.registerCommand("join-room", async (ctx) => {
+        const { roomName } = ctx.payload;
+        try {
+          await server.addToRoom(roomName, ctx.connection);
+          return { success: true };
+        } catch (e) {
+          console.error(`[Test Setup] Failed to join room ${roomName}:`, e);
+          return { success: false };
+        }
+      });
+      server.registerCommand("leave-room", async (ctx) => {
+        const { roomName } = ctx.payload;
+        try {
+          await server.removeFromRoom(roomName, ctx.connection);
+          return { success: true };
+        } catch (e) {
+          console.error(`[Test Setup] Failed to leave room ${roomName}:`, e);
+          return { success: false };
+        }
+      });
+    });
+
+    // server a client:
+    clientA = new MeshClient(`ws://localhost:${portA}`);
+
+    // server b clients:
+    clientB = new MeshClient(`ws://localhost:${portB}`);
+    clientC = new MeshClient(`ws://localhost:${portB}`);
+  });
+
+  afterEach(async () => {
+    await clientA.close();
+    await clientB.close();
+    await clientC.close();
+    await serverA.close();
+    await serverB.close();
+  });
+
+  test("join event propagates across instances", async () => {
+    await clientA.connect(); // srv a
+    await clientB.connect(); // srv b
+
+    const connectionsB_Server = serverB.connectionManager.getLocalConnections();
+    const clientBId = connectionsB_Server[0]?.id;
+    expect(clientBId).toBeDefined();
+
+    const callbackA = vi.fn();
+    const { present: initialPresentA } = await clientA.subscribePresence(
+      roomName,
+      callbackA
+    );
+    expect(initialPresentA).toEqual([]); // empty room
+
+    const joinResultB = await clientB.command("join-room", { roomName });
+    expect(joinResultB.success).toBe(true);
+
+    await wait(150);
+
+    // client a (srv a) receives join event from client b (srv b)
+    expect(callbackA).toHaveBeenCalledTimes(1);
+    expect(callbackA).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "join",
+        roomName: roomName,
+        connectionId: clientBId,
+      })
+    );
+  }, 10000);
+
+  test("leave event propagates across instances", async () => {
+    await clientA.connect();
+    await clientB.connect();
+
+    const connectionsB_Server = serverB.connectionManager.getLocalConnections();
+    const clientBId = connectionsB_Server[0]?.id;
+    expect(clientBId).toBeDefined();
+
+    const callbackA = vi.fn();
+    const { present: initialPresentA } = await clientA.subscribePresence(
+      roomName,
+      callbackA
+    );
+    expect(initialPresentA).toEqual([]);
+
+    await clientB.command("join-room", { roomName });
+    await wait(150);
+
+    // client a receives join event from client b
+    expect(callbackA).toHaveBeenCalledTimes(1);
+    expect(callbackA).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "join", connectionId: clientBId })
+    );
+
+    // client B leaves the room via srv b
+    const leaveResultB = await clientB.command("leave-room", { roomName });
+    expect(leaveResultB.success).toBe(true);
+
+    await wait(150);
+
+    // client a (srv a) receives leave event from client b (srv b)
+    expect(callbackA).toHaveBeenCalledTimes(2);
+    expect(callbackA).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: "leave",
+        roomName: roomName,
+        connectionId: clientBId,
+      })
+    );
+  }, 10000);
+
+  test("disconnect event propagates as leave across instances", async () => {
+    await clientA.connect();
+    await clientB.connect();
+
+    const connectionsB_Server = serverB.connectionManager.getLocalConnections();
+    const clientBId = connectionsB_Server[0]?.id;
+    expect(clientBId).toBeDefined();
+
+    const callbackA = vi.fn();
+    const { present: initialPresentA } = await clientA.subscribePresence(
+      roomName,
+      callbackA
+    );
+    expect(initialPresentA).toEqual([]);
+
+    await clientB.command("join-room", { roomName });
+    await wait(150);
+
+    expect(callbackA).toHaveBeenCalledTimes(1);
+    expect(callbackA).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "join", connectionId: clientBId })
+    );
+
+    // client b disconnects from server b
+    await clientB.close();
+
+    await wait(150);
+
+    // client a receives leave event from client b's disconnection
+    expect(callbackA).toHaveBeenCalledTimes(2);
+    expect(callbackA).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: "leave",
+        roomName: roomName,
+        connectionId: clientBId,
+      })
+    );
+  }, 10000);
+
+  test("initial presence list includes users from other instances", async () => {
+    await clientA.connect();
+    await clientB.connect();
+    await clientC.connect();
+
+    const connectionsB_Server = serverB.connectionManager.getLocalConnections();
+    const clientBId = connectionsB_Server[0]?.id;
+    const clientCId = connectionsB_Server[1]?.id;
+    expect(clientBId).toBeDefined();
+    expect(clientCId).toBeDefined();
+
+    // client b -> srv b
+    await clientB.command("join-room", { roomName });
+    // client c -> srv b
+    await clientC.command("join-room", { roomName });
+
+    await wait(150);
+
+    // client a subscribes to presence from srv a
+    const callbackA = vi.fn();
+    const { success, present } = await clientA.subscribePresence(
+      roomName,
+      callbackA
+    );
+
+    expect(success).toBe(true);
+    // initial list contains client b and c
+    expect(present.length).toBe(2);
+    expect(present).toContain(clientBId);
+    expect(present).toContain(clientCId);
+
+    // callback not invoked yet because no events have occurred
+    expect(callbackA).not.toHaveBeenCalled();
+  }, 10000);
+});
