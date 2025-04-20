@@ -110,11 +110,11 @@ export class MeshClient extends EventEmitter {
     this.connection.on("message", (data) => {
       this.emit("message", data);
 
-      if (data.command === "record-update") {
+      if (data.command === "mesh/record-update") {
         this.handleRecordUpdate(data.payload);
-      } else if (data.command === "presence-update") {
+      } else if (data.command === "mesh/presence-update") {
         this.handlePresenceUpdate(data.payload);
-      } else if (data.command === "subscription-message") {
+      } else if (data.command === "mesh/subscription-message") {
         this.emit(data.command, data.payload);
       } else {
         const systemCommands = [
@@ -458,7 +458,7 @@ export class MeshClient extends EventEmitter {
     options?: { historyLimit?: number }
   ): Promise<{ success: boolean; history: string[] }> {
     this.on(
-      "subscription-message",
+      "mesh/subscription-message",
       async (data: { channel: string; message: string }) => {
         if (data.channel === channel) {
           await callback(data.message);
@@ -468,7 +468,7 @@ export class MeshClient extends EventEmitter {
 
     const historyLimit = options?.historyLimit;
 
-    return this.command("subscribe-channel", { channel, historyLimit }).then(
+    return this.command("mesh/subscribe-channel", { channel, historyLimit }).then(
       (result) => {
         if (result.success && result.history && result.history.length > 0) {
           result.history.forEach((message: string) => {
@@ -491,7 +491,7 @@ export class MeshClient extends EventEmitter {
    * @returns {Promise<boolean>} A promise that resolves to true if the unsubscription is successful, or false otherwise.
    */
   unsubscribeChannel(channel: string): Promise<boolean> {
-    return this.command("unsubscribe-channel", { channel });
+    return this.command("mesh/unsubscribe-channel", { channel });
   }
 
   /**
@@ -515,7 +515,7 @@ export class MeshClient extends EventEmitter {
     const mode = options?.mode ?? "full";
 
     try {
-      const result = await this.command("subscribe-record", { recordId, mode });
+      const result = await this.command("mesh/subscribe-record", { recordId, mode });
 
       if (result.success) {
         this.recordSubscriptions.set(recordId, {
@@ -553,7 +553,7 @@ export class MeshClient extends EventEmitter {
    */
   async unsubscribeRecord(recordId: string): Promise<boolean> {
     try {
-      const success = await this.command("unsubscribe-record", { recordId });
+      const success = await this.command("mesh/unsubscribe-record", { recordId });
       if (success) {
         this.recordSubscriptions.delete(recordId);
       }
@@ -576,7 +576,7 @@ export class MeshClient extends EventEmitter {
    */
   async publishRecordUpdate(recordId: string, newValue: any): Promise<boolean> {
     try {
-      const result = await this.command("publish-record-update", {
+      const result = await this.command("mesh/publish-record-update", {
         recordId,
         newValue,
       });
@@ -608,7 +608,7 @@ export class MeshClient extends EventEmitter {
     }) => void | Promise<void>
   ): Promise<{ success: boolean; present: string[] }> {
     try {
-      const result = await this.command("subscribe-presence", { roomName });
+      const result = await this.command("mesh/subscribe-presence", { roomName });
 
       if (result.success) {
         this.presenceSubscriptions.set(roomName, callback);
@@ -635,7 +635,7 @@ export class MeshClient extends EventEmitter {
    */
   async unsubscribePresence(roomName: string): Promise<boolean> {
     try {
-      const success = await this.command("unsubscribe-presence", { roomName });
+      const success = await this.command("mesh/unsubscribe-presence", { roomName });
       if (success) {
         this.presenceSubscriptions.delete(roomName);
       }

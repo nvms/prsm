@@ -237,7 +237,7 @@ export class MeshServer extends WebSocketServer {
           for (const connection of this.channelSubscriptions[channel]) {
             if (!connection.isDead) {
               connection.send({
-                command: "presence-update",
+                command: "mesh/presence-update",
                 payload: JSON.parse(message),
               });
             }
@@ -247,7 +247,7 @@ export class MeshServer extends WebSocketServer {
         for (const connection of this.channelSubscriptions[channel]) {
           if (!connection.isDead) {
             connection.send({
-              command: "subscription-message",
+              command: "mesh/subscription-message",
               payload: { channel, message },
             });
           }
@@ -307,12 +307,12 @@ export class MeshServer extends WebSocketServer {
         if (connection && !connection.isDead) {
           if (mode === "patch" && patch) {
             connection.send({
-              command: "record-update",
+              command: "mesh/record-update",
               payload: { recordId, patch, version },
             });
           } else if (mode === "full" && newValue !== undefined) {
             connection.send({
-              command: "record-update",
+              command: "mesh/record-update",
               payload: { recordId, full: newValue, version },
             });
           }
@@ -669,7 +669,7 @@ export class MeshServer extends WebSocketServer {
     this.registerCommand<
       { channel: string; historyLimit?: number },
       { success: boolean; history?: string[] }
-    >("subscribe-channel", async (ctx) => {
+    >("mesh/subscribe-channel", async (ctx) => {
       const { channel, historyLimit } = ctx.payload;
 
       if (!(await this.isChannelExposed(channel, ctx.connection))) {
@@ -704,7 +704,7 @@ export class MeshServer extends WebSocketServer {
     });
 
     this.registerCommand<{ channel: string }, boolean>(
-      "unsubscribe-channel",
+      "mesh/unsubscribe-channel",
       async (ctx) => {
         const { channel } = ctx.payload;
         if (this.channelSubscriptions[channel]) {
@@ -729,7 +729,7 @@ export class MeshServer extends WebSocketServer {
     this.registerCommand<
       { recordId: string; mode?: "patch" | "full" },
       { success: boolean; record?: any; version?: number }
-    >("subscribe-record", async (ctx) => {
+    >("mesh/subscribe-record", async (ctx) => {
       const { recordId, mode = "full" } = ctx.payload;
       const connectionId = ctx.connection.id;
 
@@ -754,7 +754,7 @@ export class MeshServer extends WebSocketServer {
     });
 
     this.registerCommand<{ recordId: string }, boolean>(
-      "unsubscribe-record",
+      "mesh/unsubscribe-record",
       async (ctx) => {
         const { recordId } = ctx.payload;
         const connectionId = ctx.connection.id;
@@ -775,7 +775,7 @@ export class MeshServer extends WebSocketServer {
     this.registerCommand<
       { recordId: string; newValue: any },
       { success: boolean }
-    >("publish-record-update", async (ctx) => {
+    >("mesh/publish-record-update", async (ctx) => {
       const { recordId, newValue } = ctx.payload;
 
       if (!(await this.isRecordWritable(recordId, ctx.connection))) {
@@ -801,7 +801,7 @@ export class MeshServer extends WebSocketServer {
     this.registerCommand<
       { roomName: string },
       { success: boolean; present: string[] }
-    >("subscribe-presence", async (ctx) => {
+    >("mesh/subscribe-presence", async (ctx) => {
       const { roomName } = ctx.payload;
       const connectionId = ctx.connection.id;
 
@@ -841,7 +841,7 @@ export class MeshServer extends WebSocketServer {
     });
 
     this.registerCommand<{ roomName: string }, boolean>(
-      "unsubscribe-presence",
+      "mesh/unsubscribe-presence",
       async (ctx) => {
         const { roomName } = ctx.payload;
         const presenceChannel = `mesh:presence:updates:${roomName}`;

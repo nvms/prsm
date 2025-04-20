@@ -310,12 +310,12 @@ describe("Record Subscription", () => {
 
     // verify unsubscribe and subscribe were called for resync
     expect(commandSpy).toHaveBeenCalledWith(
-      "unsubscribe-record",
+      "mesh/unsubscribe-record",
       { recordId },
       30000
     );
     expect(commandSpy).toHaveBeenCalledWith(
-      "subscribe-record",
+      "mesh/subscribe-record",
       {
         recordId,
         mode: "patch",
