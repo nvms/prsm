@@ -1,6 +1,6 @@
 import type { Redis } from "ioredis";
-import type { Connection } from "./connection";
-import type { RoomManager } from "./room-manager";
+import type { Connection } from "../connection";
+import type { RoomManager } from "./room";
 
 type ChannelPattern = string | RegExp;
 

@@ -1,5 +1,5 @@
 import Redis from "ioredis";
-import type { Connection } from "./connection";
+import type { Connection } from "../connection";
 
 export class RoomManager {
   private redis: Redis;

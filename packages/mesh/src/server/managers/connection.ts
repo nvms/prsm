@@ -1,6 +1,6 @@
 import type Redis from "ioredis";
-import type { Connection } from "./connection";
-import type { RoomManager } from "./room-manager";
+import type { Connection } from "../connection";
+import type { RoomManager } from "./room";
 
 const CONNECTIONS_HASH_KEY = "mesh:connections";
 const INSTANCE_CONNECTIONS_KEY_PREFIX = "mesh:connections:";

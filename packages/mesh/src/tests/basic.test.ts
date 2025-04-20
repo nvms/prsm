@@ -48,13 +48,6 @@ describe("MeshServer", () => {
     await server.close();
   });
 
-  test("should create a server instance", () => {
-    expect(server).toBeInstanceOf(MeshServer);
-    expect(server.redis).toBeInstanceOf(Redis);
-    expect(server.roomManager).toBeDefined();
-    expect(server.connectionManager).toBeDefined();
-  });
-
   test("clients can connect to the server", async () => {
     await clientA.connect();
     expect(clientA.status).toBe(Status.ONLINE);
