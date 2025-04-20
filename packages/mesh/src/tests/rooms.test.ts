@@ -47,18 +47,12 @@ describe("MeshServer", () => {
   });
 
   test("isInRoom", async () => {
-    server.registerCommand("join-room", async (ctx) => {
-      const { roomName } = ctx.payload;
-      await server.roomManager.addToRoom(roomName, ctx.connection);
-      return { success: true };
-    });
-
     await clientA.connect();
     await clientB.connect();
 
-    await clientA.command("join-room", { roomName: "room1" });
-    await clientB.command("join-room", { roomName: "room1" });
-    await clientA.command("join-room", { roomName: "room2" });
+    await clientA.joinRoom("room1");
+    await clientB.joinRoom("room1");
+    await clientA.joinRoom("room2");
 
     const connectionA = server.connectionManager.getLocalConnections()[0]!;
     const connectionB = server.connectionManager.getLocalConnections()[1]!;

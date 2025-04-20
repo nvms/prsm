@@ -9,6 +9,14 @@ import type { Operation } from "fast-json-patch";
 export { Status } from "../common/status";
 export { applyPatch } from "fast-json-patch";
 
+export type PresenceUpdate =
+  | { type: "join"; connectionId: string }
+  | { type: "leave"; connectionId: string };
+
+export type PresenceUpdateCallback = (
+  update: PresenceUpdate
+) => void | Promise<void>;
+
 export type MeshClientOptions = Partial<{
   /**
    * The number of milliseconds to wait before considering the connection closed due to inactivity.
@@ -468,20 +476,21 @@ export class MeshClient extends EventEmitter {
 
     const historyLimit = options?.historyLimit;
 
-    return this.command("mesh/subscribe-channel", { channel, historyLimit }).then(
-      (result) => {
-        if (result.success && result.history && result.history.length > 0) {
-          result.history.forEach((message: string) => {
-            callback(message);
-          });
-        }
-
-        return {
-          success: result.success,
-          history: result.history || [],
-        };
+    return this.command("mesh/subscribe-channel", {
+      channel,
+      historyLimit,
+    }).then((result) => {
+      if (result.success && result.history && result.history.length > 0) {
+        result.history.forEach((message: string) => {
+          callback(message);
+        });
       }
-    );
+
+      return {
+        success: result.success,
+        history: result.history || [],
+      };
+    });
   }
 
   /**
@@ -515,7 +524,10 @@ export class MeshClient extends EventEmitter {
     const mode = options?.mode ?? "full";
 
     try {
-      const result = await this.command("mesh/subscribe-record", { recordId, mode });
+      const result = await this.command("mesh/subscribe-record", {
+        recordId,
+        mode,
+      });
 
       if (result.success) {
         this.recordSubscriptions.set(recordId, {
@@ -553,7 +565,9 @@ export class MeshClient extends EventEmitter {
    */
   async unsubscribeRecord(recordId: string): Promise<boolean> {
     try {
-      const success = await this.command("mesh/unsubscribe-record", { recordId });
+      const success = await this.command("mesh/unsubscribe-record", {
+        recordId,
+      });
       if (success) {
         this.recordSubscriptions.delete(recordId);
       }
@@ -591,6 +605,53 @@ export class MeshClient extends EventEmitter {
   }
 
   /**
+   * Attempts to join the specified room and optionally subscribes to presence updates.
+   * If a callback for presence updates is provided, the method subscribes to presence changes and invokes the callback when updates occur.
+   *
+   * @param {string} roomName - The name of the room to join.
+   * @param {PresenceUpdateCallback=} onPresenceUpdate - Optional callback to receive presence updates for the room.
+   * @returns {Promise<{ success: boolean; present: string[] }>} A promise that resolves with an object indicating whether joining was successful and the list of present members.
+   * @throws {Error} If an error occurs during the join or subscription process, the promise may be rejected with the error.
+   */
+  async joinRoom(
+    roomName: string,
+    onPresenceUpdate?: PresenceUpdateCallback
+  ): Promise<{ success: boolean; present: string[] }> {
+    const joinResult = await this.command("mesh/join-room", { roomName });
+
+    if (!joinResult.success) {
+      return { success: false, present: [] };
+    }
+
+    if (!onPresenceUpdate) {
+      return { success: true, present: joinResult.present || [] };
+    }
+
+    const { success: subSuccess, present } = await this.subscribePresence(
+      roomName,
+      onPresenceUpdate
+    );
+    return { success: subSuccess, present };
+  }
+
+  /**
+   * Leaves the specified room and unsubscribes from presence updates if subscribed.
+   *
+   * @param {string} roomName - The name of the room to leave.
+   * @returns {Promise<{ success: boolean }>} A promise that resolves to an object indicating whether leaving the room was successful.
+   * @throws {Error} If the underlying command or unsubscribe operation fails, the promise may be rejected with an error.
+   */
+  async leaveRoom(roomName: string): Promise<{ success: boolean }> {
+    const result = await this.command("mesh/leave-room", { roomName });
+
+    if (result.success && this.presenceSubscriptions.has(roomName)) {
+      await this.unsubscribePresence(roomName);
+    }
+
+    return { success: result.success };
+  }
+
+  /**
    * Subscribes to presence updates for a specific room.
    *
    * @param {string} roomName - The name of the room to subscribe to presence updates for.
@@ -599,16 +660,12 @@ export class MeshClient extends EventEmitter {
    */
   async subscribePresence(
     roomName: string,
-    callback: (update: {
-      type: "join" | "leave";
-      connectionId: string;
-      roomName: string;
-      timestamp: number;
-      metadata?: any;
-    }) => void | Promise<void>
+    callback: PresenceUpdateCallback
   ): Promise<{ success: boolean; present: string[] }> {
     try {
-      const result = await this.command("mesh/subscribe-presence", { roomName });
+      const result = await this.command("mesh/subscribe-presence", {
+        roomName,
+      });
 
       if (result.success) {
         this.presenceSubscriptions.set(roomName, callback);
@@ -635,7 +692,9 @@ export class MeshClient extends EventEmitter {
    */
   async unsubscribePresence(roomName: string): Promise<boolean> {
     try {
-      const success = await this.command("mesh/unsubscribe-presence", { roomName });
+      const success = await this.command("mesh/unsubscribe-presence", {
+        roomName,
+      });
       if (success) {
         this.presenceSubscriptions.delete(roomName);
       }

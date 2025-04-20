@@ -12,6 +12,11 @@ Mesh is a command-based WebSocket framework for real-time applications. It uses 
   * [Server configuration](#server-configuration)
   * [Server publishing](#server-publishing)
   * [Client usage](#client-usage)
+* [Rooms](#rooms)
+  * [Joining a room](#joining-a-room)
+  * [Leaving a room](#leaving-a-room)
+  * [Server API](#server-api)
+  * [Access control](#access-control)
 * [Presence](#presence)
   * [Server configuration](#server-configuration-1)
   * [Getting presence information (server-side)](#getting-presence-information-server-side)
@@ -228,6 +233,87 @@ This feature is great for:
 - Pub/sub messaging across distributed server instances
 - Notification feeds with instant context
 
+## Rooms
+
+Mesh supports rooms as a first-class concept for organizing connections into logical groups. Clients can join and leave rooms using simple built-in commands.
+
+Room membership is automatically tracked across server instances using Redis, and cleaned up when connections disconnect.
+
+### Joining a room
+
+Use the `joinRoom` method on the client:
+
+```ts
+const { success, present } = await client.joinRoom("room:lobby");
+```
+
+By default, this joins the room without subscribing to presence.
+
+To automatically receive presence updates when users join or leave:
+
+```ts
+const { success, present } = await client.joinRoom("room:lobby", (update) => {
+  if (update.type === "join") {
+    console.log("User joined:", update.connectionId);
+  } else {
+    console.log("User left:", update.connectionId);
+  }
+});
+```
+
+This behaves identically to calling `subscribePresence(...)` yourself, but is more convenient. The `present` array includes the list of currently connected users at the time of join.
+
+> [!NOTE]
+> If you don’t pass a callback, the `present` array still reflects who is currently in the room — even though no real-time presence tracking is active.
+
+### Leaving a room
+
+Call `leaveRoom(...)` to exit the room:
+
+```ts
+await client.leaveRoom("room:lobby");
+```
+
+If presence was subscribed via `joinRoom(...)`, it will automatically be unsubscribed when leaving.
+
+This ensures room and presence subscriptions remain in sync without extra work.
+
+### Server API
+
+Mesh also exposes room utilities on the server for custom behavior:
+
+- `server.addToRoom(roomName, connection)`
+- `server.removeFromRoom(roomName, connection)`
+- `server.isInRoom(roomName, connection)` → `boolean`
+- `server.getRoomMembers(roomName)` → `string[]`
+- `server.removeFromAllRooms(connection)`
+- `server.clearRoom(roomName)`
+
+These can be used to implement custom commands or manage room state manually if needed.
+
+### Access control
+
+You can guard room joins using command middleware, just like any other command. The built-in room join command is "mesh/join-room", and the payload contains a `roomName` string:
+
+```ts
+server.addMiddleware(async (ctx) => {
+  if (ctx.command === "mesh/join-room") {
+    const { roomName } = ctx.payload;
+    const meta = await server.connectionManager.getMetadata(ctx.connection);
+
+    if (!meta?.canJoinRooms) {
+      throw new Error("Access denied");
+    }
+
+    if (roomName.startsWith("admin:") && !meta.isAdmin) {
+      throw new Error("Admins only");
+    }
+  }
+});
+```
+
+This gives you full flexibility to enforce auth, roles, or custom logic per room.
+
 ## Presence
 
 Mesh provides a built-in presence system that tracks which connections are present in specific rooms and notifies clients when connections join or leave. This is ideal for building features like "who's online" indicators, or any real-time awareness of other users.
@@ -246,7 +332,9 @@ server.trackPresence(/^room:.*$/);
 // track presence for a specific room
 server.trackPresence("lobby");
 
-// guard who can see presence
+// guard who can see presence.
+// clients who attempt to subscribe to the presence of this room
+// will be rejected if the guard returns false
 server.trackPresence("admin-room", async (conn, roomName) => {
   const meta = await server.connectionManager.getMetadata(conn);
   return meta?.isAdmin === true;
@@ -265,12 +353,12 @@ server.trackPresence("vip-room", {
 });
 ```
 
-When presence is enabled for a room, Mesh automatically:
+When presence tracking is enabled for a room, Mesh automatically:
 
-1. Tracks which connections are present in the room
-2. Emits presence events when connections join or leave
-3. Refreshes each connection's presence TTL automatically as long as it remains connected and responding to pings
-4. Cleans up presence when connections disconnect
+- Detects and records the connection IDs of clients joining the room.
+- Emits real‐time “join” and “leave” events to subscribed clients.
+- Automatically refreshes each connection’s presence using a configurable TTL as long as the client remains active.
+- Cleans up expired or disconnected entries to maintain an up-to-date presence list.
 
 ### Getting presence information (server-side)
 

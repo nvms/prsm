@@ -270,30 +270,6 @@ describe("Presence Subscription (Multiple Instances)", () => {
     await serverA.ready();
     await serverB.ready();
 
-    // register join/leave commands on both servers
-    [serverA, serverB].forEach((server) => {
-      server.registerCommand("join-room", async (ctx) => {
-        const { roomName } = ctx.payload;
-        try {
-          await server.addToRoom(roomName, ctx.connection);
-          return { success: true };
-        } catch (e) {
-          console.error(`[Test Setup] Failed to join room ${roomName}:`, e);
-          return { success: false };
-        }
-      });
-      server.registerCommand("leave-room", async (ctx) => {
-        const { roomName } = ctx.payload;
-        try {
-          await server.removeFromRoom(roomName, ctx.connection);
-          return { success: true };
-        } catch (e) {
-          console.error(`[Test Setup] Failed to leave room ${roomName}:`, e);
-          return { success: false };
-        }
-      });
-    });
-
     // server a client:
     clientA = new MeshClient(`ws://localhost:${portA}`);
 
@@ -325,7 +301,7 @@ describe("Presence Subscription (Multiple Instances)", () => {
     );
     expect(initialPresentA).toEqual([]); // empty room
 
-    const joinResultB = await clientB.command("join-room", { roomName });
+    const joinResultB = await clientB.joinRoom(roomName);
     expect(joinResultB.success).toBe(true);
 
     await wait(150);
@@ -356,7 +332,7 @@ describe("Presence Subscription (Multiple Instances)", () => {
     );
     expect(initialPresentA).toEqual([]);
 
-    await clientB.command("join-room", { roomName });
+    await clientB.joinRoom(roomName);
     await wait(150);
 
     // client a receives join event from client b
@@ -366,7 +342,7 @@ describe("Presence Subscription (Multiple Instances)", () => {
     );
 
     // client B leaves the room via srv b
-    const leaveResultB = await clientB.command("leave-room", { roomName });
+    const leaveResultB = await clientB.leaveRoom(roomName);
     expect(leaveResultB.success).toBe(true);
 
     await wait(150);
@@ -398,7 +374,7 @@ describe("Presence Subscription (Multiple Instances)", () => {
     );
     expect(initialPresentA).toEqual([]);
 
-    await clientB.command("join-room", { roomName });
+    await clientB.joinRoom(roomName);
     await wait(150);
 
     expect(callbackA).toHaveBeenCalledTimes(1);
@@ -435,9 +411,9 @@ describe("Presence Subscription (Multiple Instances)", () => {
     expect(clientCId).toBeDefined();
 
     // client b -> srv b
-    await clientB.command("join-room", { roomName });
+    await clientB.joinRoom(roomName);
     // client c -> srv b
-    await clientC.command("join-room", { roomName });
+    await clientC.joinRoom(roomName);
 
     await wait(150);
 

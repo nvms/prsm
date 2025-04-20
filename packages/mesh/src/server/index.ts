@@ -740,6 +740,27 @@ export class MeshServer extends WebSocketServer {
         return false;
       }
     );
+
+    this.registerCommand<
+      { roomName: string },
+      { success: boolean; present: string[] }
+    >("mesh/join-room", async (ctx) => {
+      const { roomName } = ctx.payload;
+      await this.addToRoom(roomName, ctx.connection);
+      const present = await this.presenceManager.getPresentConnections(
+        roomName
+      );
+      return { success: true, present };
+    });
+
+    this.registerCommand<{ roomName: string }, { success: boolean }>(
+      "mesh/leave-room",
+      async (ctx) => {
+        const { roomName } = ctx.payload;
+        await this.removeFromRoom(roomName, ctx.connection);
+        return { success: true };
+      }
+    );
   }
 
   private registerRecordCommands() {
