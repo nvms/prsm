@@ -456,6 +456,19 @@ const allMetadata = await Promise.all(
 // [{ userId: "user123", username: "Alice", avatar: "..." }, ...]
 ```
 
+> [!NOTE]
+> Mesh tracks presence and presence state **per connection**, not per user.
+>
+> If a user opens multiple browser tabs (or devices), each will be assigned a **separate connection ID** and have an **independent presence state**.
+>
+> Even if both tabs authenticate with the same user ID and you store these values in connection metadata, Mesh does not merge or deduplicate those connections.
+>
+> If you want to show a single presence indicator per user (e.g. only one "typing" icon), you should:
+>
+> 1. Attach a `userId` to each connection's metadata
+> 2. Resolve metadata for each `connectionId` client-side
+> 3. Deduplicate by `userId` in your UI logic
+
 > [!TIP]
 > You can expose a `get-user-metadata` command on the server that reads from `connectionManager.getMetadata(...)` to support this.
 
