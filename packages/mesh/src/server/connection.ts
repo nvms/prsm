@@ -10,6 +10,9 @@ import { Status } from "../common/status";
 import { Latency } from "./latency";
 import { Ping } from "./ping";
 import type { MeshServerOptions } from "./";
+import { getCreateId } from "./utils/ids";
+
+const getId = getCreateId({ init: Date.now(), len: 4 });
 
 export class Connection extends EventEmitter {
   id: string;
@@ -29,7 +32,7 @@ export class Connection extends EventEmitter {
   ) {
     super();
     this.socket = socket;
-    this.id = req.headers["sec-websocket-key"]!;
+    this.id = getId();
     this.remoteAddress = req.socket.remoteAddress!;
     this.connectionOptions = options;
 
