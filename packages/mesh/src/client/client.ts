@@ -11,7 +11,8 @@ export { applyPatch } from "fast-json-patch";
 
 export type PresenceUpdate =
   | { type: "join"; connectionId: string }
-  | { type: "leave"; connectionId: string };
+  | { type: "leave"; connectionId: string }
+  | { type: "state"; connectionId: string; state: Record<string, any> | null };
 
 export type PresenceUpdateCallback = (
   update: PresenceUpdate
@@ -87,10 +88,11 @@ export class MeshClient extends EventEmitter {
   private presenceSubscriptions: Map<
     string, // roomName
     (update: {
-      type: "join" | "leave";
+      type: "join" | "leave" | "state";
       connectionId: string;
       roomName: string;
       timestamp: number;
+      state?: Record<string, any> | null;
       metadata?: any;
     }) => void | Promise<void>
   > = new Map();
@@ -394,10 +396,11 @@ export class MeshClient extends EventEmitter {
   }
 
   private async handlePresenceUpdate(payload: {
-    type: "join" | "leave";
+    type: "join" | "leave" | "state";
     connectionId: string;
     roomName: string;
     timestamp: number;
+    state?: Record<string, any> | null;
     metadata?: any;
   }) {
     const { roomName } = payload;
@@ -655,25 +658,30 @@ export class MeshClient extends EventEmitter {
    * Subscribes to presence updates for a specific room.
    *
    * @param {string} roomName - The name of the room to subscribe to presence updates for.
-   * @param {(update: { type: "join" | "leave"; connectionId: string; roomName: string; timestamp: number; metadata?: any }) => void | Promise<void>} callback - Function called on presence updates.
-   * @returns {Promise<{ success: boolean; present: string[] }>} Initial state of presence in the room.
+   * @param {PresenceUpdateCallback} callback - Function called on presence updates.
+   * @returns {Promise<{ success: boolean; present: string[]; states?: Record<string, Record<string, any>> }>} Initial state of presence in the room.
    */
   async subscribePresence(
     roomName: string,
     callback: PresenceUpdateCallback
-  ): Promise<{ success: boolean; present: string[] }> {
+  ): Promise<{
+    success: boolean;
+    present: string[];
+    states?: Record<string, Record<string, any>>;
+  }> {
     try {
       const result = await this.command("mesh/subscribe-presence", {
         roomName,
       });
 
       if (result.success) {
-        this.presenceSubscriptions.set(roomName, callback);
+        this.presenceSubscriptions.set(roomName, callback as any);
       }
 
       return {
         success: result.success,
         present: result.present || [],
+        states: result.states || {},
       };
     } catch (error) {
       console.error(
@@ -702,6 +710,57 @@ export class MeshClient extends EventEmitter {
     } catch (error) {
       console.error(
         `[MeshClient] Failed to unsubscribe from presence for room ${roomName}:`,
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Publishes a presence state for the current client in a room
+   *
+   * @param {string} roomName - The name of the room
+   * @param {object} options - Options including state and optional TTL
+   * @param {Record<string, any>} options.state - The state object to publish
+   * @param {number} [options.expireAfter] - Optional TTL in milliseconds
+   * @returns {Promise<boolean>} True if successful, false otherwise
+   */
+  async publishPresenceState(
+    roomName: string,
+    options: {
+      state: Record<string, any>;
+      expireAfter?: number; // optional, in milliseconds
+    }
+  ): Promise<boolean> {
+    try {
+      return await this.command("mesh/publish-presence-state", {
+        roomName,
+        state: options.state,
+        expireAfter: options.expireAfter,
+      });
+    } catch (error) {
+      console.error(
+        `[MeshClient] Failed to publish presence state for room ${roomName}:`,
+        error
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Clears the presence state for the current client in a room
+   *
+   * @param {string} roomName - The name of the room
+   * @returns {Promise<boolean>} True if successful, false otherwise
+   */
+  async clearPresenceState(roomName: string): Promise<boolean> {
+    try {
+      return await this.command("mesh/clear-presence-state", {
+        roomName,
+      });
+    } catch (error) {
+      console.error(
+        `[MeshClient] Failed to clear presence state for room ${roomName}:`,
         error
       );
       return false;

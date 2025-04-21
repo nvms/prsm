@@ -2,43 +2,48 @@
 
 Mesh is a command-based WebSocket framework for real-time applications. It uses Redis to coordinate connections, rooms, presence, and shared state across application instances, with built-in support for structured commands, latency tracking, and automatic reconnection.
 
-* [Quickstart](#quickstart)
-  * [Server](#server)
-  * [Client](#client)
-  * [Next steps](#next-steps)
-* [Who is this for?](#who-is-this-for)
-* [Distributed messaging architecture](#distributed-messaging-architecture)
-* [Redis channel subscriptions](#redis-channel-subscriptions)
-  * [Server configuration](#server-configuration)
-  * [Server publishing](#server-publishing)
-  * [Client usage](#client-usage)
-* [Rooms](#rooms)
-  * [Joining a room](#joining-a-room)
-  * [Leaving a room](#leaving-a-room)
-  * [Server API](#server-api)
-  * [Access control](#access-control)
-* [Presence](#presence)
-  * [Server configuration](#server-configuration-1)
-  * [Getting presence information (server-side)](#getting-presence-information-server-side)
-  * [Client usage](#client-usage-1)
-  * [Combining presence with user info](#combining-presence-with-user-info)
-  * [Metadata](#metadata)
-  * [Room metadata](#room-metadata)
-* [Record subscriptions](#record-subscriptions)
-  * [Server configuration](#server-configuration-2)
-  * [Server configuration (writable)](#server-configuration-writable)
-  * [Updating records (server-side)](#updating-records-server-side)
-  * [Updating records (client-side)](#updating-records-client-side)
-  * [Client usage — full mode (default)](#client-usage--full-mode-default)
-  * [Client usage — patch mode](#client-usage--patch-mode)
-  * [Unsubscribing](#unsubscribing)
-  * [Versioning and resync](#versioning-and-resync)
-  * [Why you probably don't need client-side diffing](#why-you-probably-dont-need-client-side-diffing)
-* [Command middleware](#command-middleware)
-* [Latency tracking and connection liveness](#latency-tracking-and-connection-liveness)
-  * [Server-side configuration](#server-side-configuration)
-  * [Client-side configuration](#client-side-configuration)
-* [Comparison](#comparison)
+- [Quickstart](#quickstart)
+  - [Server](#server)
+  - [Client](#client)
+  - [Next steps](#next-steps)
+- [Who is this for?](#who-is-this-for)
+- [Distributed messaging architecture](#distributed-messaging-architecture)
+- [Redis channel subscriptions](#redis-channel-subscriptions)
+  - [Server configuration](#server-configuration)
+  - [Server publishing](#server-publishing)
+  - [Client usage](#client-usage)
+- [Rooms](#rooms)
+  - [Joining a room](#joining-a-room)
+  - [Leaving a room](#leaving-a-room)
+  - [Server API](#server-api)
+  - [Access control](#access-control)
+- [Presence](#presence)
+  - [Server configuration](#server-configuration-1)
+  - [Client usage](#client-usage-1)
+  - [Getting presence information (server-side)](#getting-presence-information-server-side)
+  - [Disabling auto-cleanup (optional)](#disabling-auto-cleanup-optional)
+  - [Combining presence with user info](#combining-presence-with-user-info)
+  - [Presence state](#presence-state)
+    - [Client API](#client-api)
+    - [Server behavior](#server-behavior)
+    - [Receiving presence state updates](#receiving-presence-state-updates)
+  - [Metadata](#metadata)
+  - [Room metadata](#room-metadata)
+- [Record subscriptions](#record-subscriptions)
+  - [Server configuration](#server-configuration-2)
+  - [Server configuration (writable)](#server-configuration-writable)
+  - [Updating records (server-side)](#updating-records-server-side)
+  - [Updating records (client-side)](#updating-records-client-side)
+  - [Client usage — full mode (default)](#client-usage--full-mode-default)
+  - [Client usage — patch mode](#client-usage--patch-mode)
+  - [Unsubscribing](#unsubscribing)
+  - [Versioning and resync](#versioning-and-resync)
+  - [Why you probably don't need client-side diffing](#why-you-probably-dont-need-client-side-diffing)
+- [Command middleware](#command-middleware)
+- [Latency tracking and connection liveness](#latency-tracking-and-connection-liveness)
+  - [Server-side configuration](#server-side-configuration)
+  - [Client-side configuration](#client-side-configuration)
+- [Comparison](#comparison)
 
 ## Quickstart
 
@@ -319,7 +324,7 @@ This gives you full flexibility to enforce auth, roles, or custom logic per room
 Mesh provides a built-in presence system that tracks which connections are present in specific rooms and notifies clients when connections join or leave. This is ideal for building features like "who's online" indicators, or any real-time awareness of other users.
 
 > [!NOTE]
-> Presence only tracks *connection IDs*, not metadata. You must join them explicitly if you want to show e.g. usernames, avatars, emails, etc.
+> Presence only tracks _connection IDs_, not metadata. You must join them explicitly if you want to show e.g. usernames, avatars, emails, etc.
 
 ### Server configuration
 
@@ -339,7 +344,7 @@ server.trackPresence("admin-room", {
   guard: async (conn, roomName) => {
     const meta = await server.connectionManager.getMetadata(conn);
     return meta?.isAdmin === true;
-  }
+  },
 });
 ```
 
@@ -415,7 +420,7 @@ server.onConnection(async (connection) => {
   await server.connectionManager.setMetadata(connection, {
     userId: "user123",
     username: "Alice",
-    avatar: "https://example.com/avatar.png"
+    avatar: "https://example.com/avatar.png",
   });
 });
 ```
@@ -427,9 +432,9 @@ const { success, present } = await client.subscribePresence(
   "lobby",
   async (update) => {
     const metadata = await client.command("get-user-metadata", {
-      connectionId: update.connectionId
+      connectionId: update.connectionId,
     });
-    
+
     if (update.type === "join") {
       console.log(`${metadata.username} joined the lobby`);
     } else if (update.type === "leave") {
@@ -443,7 +448,9 @@ To resolve all present users:
 
 ```ts
 const allMetadata = await Promise.all(
-  present.map((connectionId) => client.command("get-user-metadata", { connectionId }))
+  present.map((connectionId) =>
+    client.command("get-user-metadata", { connectionId })
+  )
 );
 
 // [{ userId: "user123", username: "Alice", avatar: "..." }, ...]
@@ -451,6 +458,81 @@ const allMetadata = await Promise.all(
 
 > [!TIP]
 > You can expose a `get-user-metadata` command on the server that reads from `connectionManager.getMetadata(...)` to support this.
+
+### Presence state
+
+In addition to tracking who is present in a room, Mesh lets clients publish **custom ephemeral presence states** — things like `"typing"`, `"away"`, `"drawing"`, etc.
+
+Presence states are:
+
+- Scoped per connection, per room
+- Completely defined by your app (no built-in types)
+- Optionally ephemeral via client-defined expiration
+- Broadcast to all clients subscribed to presence in that room
+
+> [!NOTE]
+> Presence states are separate from connection metadata. States are transient and lightweight.
+
+#### Client API
+
+To publish a presence state:
+
+```ts
+await client.publishPresenceState("room:lobby", {
+  state: { status: "typing", field: "title" },
+  expireAfter: 8000, // optional (ms)
+});
+```
+
+To clear the state manually before it expires:
+
+```ts
+await client.clearPresenceState("room:lobby");
+```
+
+#### Server behavior
+
+- The state is stored in Redis under  
+  `mesh:presence:state:{room}:{connectionId}`
+- If `ts expireAfter ` is set, it’s stored with a TTL (using Redis PX)
+- If the key expires:
+  - The state is deleted
+  - A `ts { type: "state", state: null } ` event is broadcast to subscribed clients so they can do any necessary UI updates
+- If the client clears it manually, the same event is emitted immediately
+- If the client leaves the room or disconnects, their state is cleared
+
+#### Receiving presence state updates
+
+Clients already using `ts subscribePresence(...) ` will receive `state` updates:
+
+```ts
+const { success, present, states } = await client.subscribePresence(
+  "room:lobby",
+  (update) => {
+    if (update.type === "state") {
+      if (update.state) {
+        console.log(`${update.connectionId} is now`, update.state);
+      } else {
+        console.log(`${update.connectionId}'s state was cleared`);
+      }
+    }
+  }
+);
+```
+
+The `ts states ` object includes the currently active presence states at the time of subscription.
+
+Example:
+
+```ts
+{
+  "abc123": { status: "typing", field: "title" },
+  "def456": { status: "away" }
+}
+```
+
+> [!TIP]
+> This is a low-level signaling primitive. You decide what presence states mean in your app. Mesh just relays and cleans them up.
 
 ### Metadata
 
@@ -820,6 +902,8 @@ Together, this system provides end-to-end connection liveness guarantees without
 | **Raw Events Support**   | ✅                       | ✅                              | ⚠️ Limited          | ✅              | ✅                   | ✅                      |
 | **Room Support**         | ✅                       | ✅                              | ✅                  | ✅              | ⚠️ DIY               | ⚠️ Manual               |
 | **Presence Tracking**    | ✅ Built-in              | ⚠️ Manual                       | ✅                  | ✅              | ❌                   | ❌                      |
+| **Presence State**       | ✅ Client-defined        | ❌                              | ❌                  | ⚠️ Records      | ❌                   | ❌                      |
+| **Presence Expiration**  | ✅ TTL + silent cleanup  | ⚠️ Manual                       | ❌                  | ❌              | ❌                   | ❌                      |
 | **Redis Scaling**        | ✅ Native                | ✅ With adapter                 | ✅                  | ✅              | ✅ If added          | ❌                      |
 | **Connection Metadata**  | ✅ Redis-backed          | ⚠️ Manual                       | ⚠️ Limited          | ✅ Records      | ❌                   | ❌                      |
 | **Latency Tracking**     | ✅ Built-in              | ⚠️ Manual                       | ❌                  | ❌              | ❌                   | ❌                      |

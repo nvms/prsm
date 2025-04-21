@@ -79,8 +79,14 @@ export class MeshServer extends WebSocketServer {
       this.serverOptions.enablePresenceExpirationEvents
     );
     if (this.serverOptions.enablePresenceExpirationEvents) {
-      this.redisManager.enableKeyspaceNotifications()
-        .catch(err => this.emit("error", new Error(`Failed to enable keyspace notifications: ${err}`)));
+      this.redisManager
+        .enableKeyspaceNotifications()
+        .catch((err) =>
+          this.emit(
+            "error",
+            new Error(`Failed to enable keyspace notifications: ${err}`)
+          )
+        );
     }
     this.commandManager = new CommandManager((err) => this.emit("error", err));
     this.channelManager = new ChannelManager(
@@ -647,7 +653,11 @@ export class MeshServer extends WebSocketServer {
 
     this.exposeCommand<
       { roomName: string },
-      { success: boolean; present: string[] }
+      {
+        success: boolean;
+        present: string[];
+        states?: Record<string, Record<string, any>>;
+      }
     >("mesh/subscribe-presence", async (ctx) => {
       const { roomName } = ctx.payload;
 
@@ -668,7 +678,21 @@ export class MeshServer extends WebSocketServer {
           roomName
         );
 
-        return { success: true, present };
+        // get all presence states for the room
+        const statesMap = await this.presenceManager.getAllPresenceStates(
+          roomName
+        );
+        const states: Record<string, Record<string, any>> = {};
+
+        statesMap.forEach((state, connectionId) => {
+          states[connectionId] = state;
+        });
+
+        return {
+          success: true,
+          present,
+          states,
+        };
       } catch (e) {
         console.error(
           `Failed to subscribe to presence for room ${roomName}:`,
@@ -687,6 +711,72 @@ export class MeshServer extends WebSocketServer {
           presenceChannel,
           ctx.connection
         );
+      }
+    );
+
+    this.exposeCommand<
+      { roomName: string; state: Record<string, any>; expireAfter?: number },
+      boolean
+    >("mesh/publish-presence-state", async (ctx) => {
+      const { roomName, state, expireAfter } = ctx.payload;
+      const connectionId = ctx.connection.id;
+
+      if (!state) {
+        return false;
+      }
+
+      // ensure presence is tracked for this room and the connection is in the room
+      if (
+        !(await this.presenceManager.isRoomTracked(roomName, ctx.connection)) ||
+        !(await this.isInRoom(roomName, connectionId))
+      ) {
+        return false;
+      }
+
+      try {
+        await this.presenceManager.publishPresenceState(
+          connectionId,
+          roomName,
+          state,
+          expireAfter
+        );
+        return true;
+      } catch (e) {
+        console.error(
+          `Failed to publish presence state for room ${roomName}:`,
+          e
+        );
+        return false;
+      }
+    });
+
+    this.exposeCommand<{ roomName: string }, boolean>(
+      "mesh/clear-presence-state",
+      async (ctx) => {
+        const { roomName } = ctx.payload;
+        const connectionId = ctx.connection.id;
+
+        // ensure presence is tracked for this room and the connection is in the room
+        if (
+          !(await this.presenceManager.isRoomTracked(
+            roomName,
+            ctx.connection
+          )) ||
+          !(await this.isInRoom(roomName, connectionId))
+        ) {
+          return false;
+        }
+
+        try {
+          await this.presenceManager.clearPresenceState(connectionId, roomName);
+          return true;
+        } catch (e) {
+          console.error(
+            `Failed to clear presence state for room ${roomName}:`,
+            e
+          );
+          return false;
+        }
       }
     );
   }
