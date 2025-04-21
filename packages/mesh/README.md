@@ -2,48 +2,49 @@
 
 Mesh is a command-based WebSocket framework for real-time applications. It uses Redis to coordinate connections, rooms, presence, and shared state across application instances, with built-in support for structured commands, latency tracking, and automatic reconnection.
 
-- [Quickstart](#quickstart)
-  - [Server](#server)
-  - [Client](#client)
-  - [Next steps](#next-steps)
-- [Who is this for?](#who-is-this-for)
-- [Distributed messaging architecture](#distributed-messaging-architecture)
-- [Redis channel subscriptions](#redis-channel-subscriptions)
-  - [Server configuration](#server-configuration)
-  - [Server publishing](#server-publishing)
-  - [Client usage](#client-usage)
-- [Rooms](#rooms)
-  - [Joining a room](#joining-a-room)
-  - [Leaving a room](#leaving-a-room)
-  - [Server API](#server-api)
-  - [Access control](#access-control)
-- [Presence](#presence)
-  - [Server configuration](#server-configuration-1)
-  - [Client usage](#client-usage-1)
-  - [Getting presence information (server-side)](#getting-presence-information-server-side)
-  - [Disabling auto-cleanup (optional)](#disabling-auto-cleanup-optional)
-  - [Combining presence with user info](#combining-presence-with-user-info)
-  - [Presence state](#presence-state)
-    - [Client API](#client-api)
-    - [Server behavior](#server-behavior)
-    - [Receiving presence state updates](#receiving-presence-state-updates)
-  - [Metadata](#metadata)
-  - [Room metadata](#room-metadata)
-- [Record subscriptions](#record-subscriptions)
-  - [Server configuration](#server-configuration-2)
-  - [Server configuration (writable)](#server-configuration-writable)
-  - [Updating records (server-side)](#updating-records-server-side)
-  - [Updating records (client-side)](#updating-records-client-side)
-  - [Client usage — full mode (default)](#client-usage--full-mode-default)
-  - [Client usage — patch mode](#client-usage--patch-mode)
-  - [Unsubscribing](#unsubscribing)
-  - [Versioning and resync](#versioning-and-resync)
-  - [Why you probably don't need client-side diffing](#why-you-probably-dont-need-client-side-diffing)
-- [Command middleware](#command-middleware)
-- [Latency tracking and connection liveness](#latency-tracking-and-connection-liveness)
-  - [Server-side configuration](#server-side-configuration)
-  - [Client-side configuration](#client-side-configuration)
-- [Comparison](#comparison)
+* [Quickstart](#quickstart)
+  * [Server](#server)
+  * [Client](#client)
+  * [Next steps](#next-steps)
+* [Who is this for?](#who-is-this-for)
+* [Distributed messaging architecture](#distributed-messaging-architecture)
+* [Redis channel subscriptions](#redis-channel-subscriptions)
+  * [Server configuration](#server-configuration)
+  * [Server publishing](#server-publishing)
+  * [Client usage](#client-usage)
+* [Rooms](#rooms)
+  * [Joining a room](#joining-a-room)
+  * [Leaving a room](#leaving-a-room)
+  * [Server API](#server-api)
+  * [Access control](#access-control)
+* [Presence](#presence)
+  * [Server configuration](#server-configuration-1)
+  * [Client usage](#client-usage-1)
+  * [Getting presence information (server-side)](#getting-presence-information-server-side)
+  * [Disabling auto-cleanup (optional)](#disabling-auto-cleanup-optional)
+  * [Combining presence with user info](#combining-presence-with-user-info)
+  * [Presence is per connection, not per user](#presence-is-per-connection-not-per-user)
+  * [Presence state](#presence-state)
+    * [Client API](#client-api)
+    * [Server behavior](#server-behavior)
+    * [Receiving presence state updates](#receiving-presence-state-updates)
+  * [Metadata](#metadata)
+  * [Room metadata](#room-metadata)
+* [Record subscriptions](#record-subscriptions)
+  * [Server configuration](#server-configuration-2)
+  * [Server configuration (writable)](#server-configuration-writable)
+  * [Updating records (server-side)](#updating-records-server-side)
+  * [Updating records (client-side)](#updating-records-client-side)
+  * [Client usage — full mode (default)](#client-usage--full-mode-default)
+  * [Client usage — patch mode](#client-usage--patch-mode)
+  * [Unsubscribing](#unsubscribing)
+  * [Versioning and resync](#versioning-and-resync)
+  * [Why you probably don't need client-side diffing](#why-you-probably-dont-need-client-side-diffing)
+* [Command middleware](#command-middleware)
+* [Latency tracking and connection liveness](#latency-tracking-and-connection-liveness)
+  * [Server-side configuration](#server-side-configuration)
+  * [Client-side configuration](#client-side-configuration)
+* [Comparison](#comparison)
 
 ## Quickstart
 
@@ -456,18 +457,25 @@ const allMetadata = await Promise.all(
 // [{ userId: "user123", username: "Alice", avatar: "..." }, ...]
 ```
 
-> [!NOTE]
-> Mesh tracks presence and presence state **per connection**, not per user.
->
-> If a user opens multiple browser tabs (or devices), each will be assigned a **separate connection ID** and have an **independent presence state**.
->
-> Even if both tabs authenticate with the same user ID and you store these values in connection metadata, Mesh does not merge or deduplicate those connections.
->
-> If you want to show a single presence indicator per user (e.g. only one "typing" icon), you should:
->
-> 1. Attach a `userId` to each connection's metadata
-> 2. Resolve metadata for each `connectionId` client-side
-> 3. Deduplicate by `userId` in your UI logic
+### Presence is per connection, not per user
+
+Mesh tracks presence and presence state **per connection**, not per user.
+
+When a user opens your app in multiple browser tabs or across multiple devices, each instance creates a separate WebSocket connection. These connections are treated independently in Mesh, each with its own connection ID, room membership, and presence state.
+
+Even if those connections authenticate using the same user ID and you store that user ID in connection metadata, Mesh will not automatically group or deduplicate them. Each connection remains logically distinct.
+
+This is intentional. Mesh is designed as a low-level framework that gives you real-time building blocks — like rooms, presence, state sync, and messaging — without dictating your data model, authentication flow, or application logic.
+
+We don’t assume what a "user" is in your system, how they should be identified, or whether multiple sessions should be merged. That’s entirely up to you.
+
+If you want to implement user-level presence behavior (such as "only show one typing indicator per user"), you can do so easily:
+
+1. Assign a `userId` to each connection’s metadata during authentication.
+2. On the client, resolve metadata for each `connectionId` received in presence events.
+3. In your UI, deduplicate by `userId` rather than `connectionId`.
+
+This gives you full control over what “presence” means in your app, without locking you into a particular structure.
 
 > [!TIP]
 > You can expose a `get-user-metadata` command on the server that reads from `connectionManager.getMetadata(...)` to support this.
