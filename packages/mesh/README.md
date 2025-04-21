@@ -323,57 +323,42 @@ Mesh provides a built-in presence system that tracks which connections are prese
 
 ### Server configuration
 
-Enable presence tracking for specific rooms using exact names or regex patterns:
+Enable presence tracking for specific rooms using exact names or regex patterns. You can optionally customize the TTL or restrict access with a guard.
 
 ```ts
 // track presence for all rooms matching a pattern
 server.trackPresence(/^room:.*$/);
 
-// track presence for a specific room
-server.trackPresence("lobby");
-
-// guard who can see presence.
-// clients who attempt to subscribe to the presence of this room
-// will be rejected if the guard returns false
-server.trackPresence("admin-room", async (conn, roomName) => {
-  const meta = await server.connectionManager.getMetadata(conn);
-  return meta?.isAdmin === true;
+// track presence for a specific room with a custom TTL
+server.trackPresence("game-room", {
+  ttl: 60_000, // time in ms before presence entry expires if not refreshed
 });
 
-// custom TTL
-server.trackPresence("game-room", { ttl: 60_000 }); // ms
-
-// guard and TTL
-server.trackPresence("vip-room", {
-  ttl: 30_000,
+// restrict visibility to admins
+server.trackPresence("admin-room", {
   guard: async (conn, roomName) => {
     const meta = await server.connectionManager.getMetadata(conn);
-    return meta?.isVIP === true;
+    return meta?.isAdmin === true;
   }
 });
 ```
 
-When presence tracking is enabled for a room, Mesh automatically:
+When presence tracking is enabled:
 
-- Detects and records the connection IDs of clients joining the room.
-- Emits real‐time “join” and “leave” events to subscribed clients.
-- Automatically refreshes each connection’s presence using a configurable TTL as long as the client remains active.
-- Cleans up expired or disconnected entries to maintain an up-to-date presence list.
+- Mesh stores connection IDs in Redis with a TTL
+- As long as a client remains active, the TTL is automatically refreshed
+- When the TTL expires (e.g. due to disconnect or inactivity), Mesh **automatically marks the connection offline** and emits a `leave` event
 
-### Getting presence information (server-side)
-
-```ts
-// get all connections currently present in a room
-const connectionIds = await server.presenceManager.getPresentConnections("lobby");
-```
+> [!INFO]
+> Under the hood, this uses Redis keyspace notifications to detect expiration events and trigger cleanup. This behavior is enabled by default and can be disabled via the `enablePresenceExpirationEvents` server option.
 
 ### Client usage
 
-Subscribe to presence updates for a room:
+Subscribe to presence updates:
 
 ```ts
 const { success, present } = await client.subscribePresence(
-  "lobby",
+  "room:lobby",
   (update) => {
     if (update.type === "join") {
       console.log("User joined:", update.connectionId);
@@ -387,11 +372,37 @@ const { success, present } = await client.subscribePresence(
 console.log("Currently present:", present); // ["conn1", "conn2", ...]
 ```
 
-Unsubscribe when no longer needed:
+You'll receive:
+
+- The current list of `connectionId`s as `present`
+- Real-time `"join"` and `"leave"` events as users come and go (or TTL expires)
+
+Unsubscribe when done:
 
 ```ts
-await client.unsubscribePresence("lobby");
+await client.unsubscribePresence("room:lobby");
 ```
+
+### Getting presence information (server-side)
+
+```ts
+const ids = await server.presenceManager.getPresentConnections("room:lobby");
+// ["abc123", "def456", ...]
+```
+
+### Disabling auto-cleanup (optional)
+
+If for some reason you don't want TTL expirations to trigger `leave` events, you can disable it in your `MeshServer` options:
+
+```ts
+const server = new MeshServer({
+  port: 8080,
+  redisOptions: { host: "localhost", port: 6379 },
+  enablePresenceExpirationEvents: false,
+});
+```
+
+This disables Redis keyspace notifications and requires you to manage stale connections yourself (not recommended).
 
 ### Combining presence with user info
 
@@ -407,15 +418,14 @@ server.onConnection(async (connection) => {
     avatar: "https://example.com/avatar.png"
   });
 });
+```
 
-// client: subscribe to presence and resolve metadata
+Then on the client:
+
+```ts
 const { success, present } = await client.subscribePresence(
   "lobby",
   async (update) => {
-    // fetch metadata for the connection that joined/left.
-    //
-    // since clients cannot access `getAllMetadataForRoom()` directly (it's just a server API),
-    // you can expose it via a custom command like `get-user-metadata`:
     const metadata = await client.command("get-user-metadata", {
       connectionId: update.connectionId
     });
@@ -427,15 +437,20 @@ const { success, present } = await client.subscribePresence(
     }
   }
 );
-
-// initial presence - fetch metadata for all present connections
-const allMetadata = await Promise.all(
-  present.map(connectionId =>
-    client.command("get-user-metadata", { connectionId })
-  )
-);
-console.log("Users in lobby:", allMetadata);
 ```
+
+To resolve all present users:
+
+```ts
+const allMetadata = await Promise.all(
+  present.map((connectionId) => client.command("get-user-metadata", { connectionId }))
+);
+
+// [{ userId: "user123", username: "Alice", avatar: "..." }, ...]
+```
+
+> [!TIP]
+> You can expose a `get-user-metadata` command on the server that reads from `connectionManager.getMetadata(...)` to support this.
 
 ### Metadata
 

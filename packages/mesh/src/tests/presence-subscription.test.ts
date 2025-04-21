@@ -17,6 +17,7 @@ const createTestServer = (port: number) =>
     },
     pingInterval: 1000,
     latencyInterval: 500,
+    enablePresenceExpirationEvents: true,
   });
 
 const flushRedis = async () => {
@@ -243,6 +244,39 @@ describe("Presence Subscription", () => {
     present = await server.presenceManager.getPresentConnections(roomName);
     expect(present).not.toContain(connection2.id);
   });
+
+  test("presence is automatically cleaned up when TTL expires", async () => {
+    const roomName = "test:room:auto-cleanup";
+    const shortTTL = 1000;
+
+    const testServer = createTestServer(port + 100);
+    await testServer.ready();
+
+    testServer.trackPresence(roomName, { ttl: shortTTL });
+
+    const testClient = new MeshClient(`ws://localhost:${port + 100}`);
+    await testClient.connect();
+
+    const connections = testServer.connectionManager.getLocalConnections();
+    const connection = connections[0]!;
+
+    await testServer.addToRoom(roomName, connection);
+
+    let present = await testServer.presenceManager.getPresentConnections(
+      roomName
+    );
+    expect(present).toContain(connection.id);
+
+    // wait for more than the TTL to allow the key to expire and notification to be processed
+    await wait(shortTTL * 3);
+
+    // the connection should be automatically marked as offline when the key expires
+    present = await testServer.presenceManager.getPresentConnections(roomName);
+    expect(present).not.toContain(connection.id);
+
+    await testClient.close();
+    await testServer.close();
+  }, 10000);
 });
 
 describe("Presence Subscription (Multiple Instances)", () => {

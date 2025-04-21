@@ -38,6 +38,14 @@ export type MeshServerOptions = ServerOptions & {
   redisOptions: RedisOptions;
 
   /**
+   * Whether to enable Redis keyspace notifications for presence expiration.
+   * When enabled, connections will be automatically marked as offline when their presence TTL expires.
+   *
+   * @default true
+   */
+  enablePresenceExpirationEvents?: boolean;
+
+  /**
    * The maximum number of consecutive ping intervals the server will wait
    * for a pong response before considering the client disconnected.
    * A value of 1 means the client must respond within roughly 2 * pingInterval

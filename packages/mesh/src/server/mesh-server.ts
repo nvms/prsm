@@ -74,8 +74,14 @@ export class MeshServer extends WebSocketServer {
     );
     this.presenceManager = new PresenceManager(
       this.redisManager.redis,
-      this.roomManager
+      this.roomManager,
+      this.redisManager,
+      this.serverOptions.enablePresenceExpirationEvents
     );
+    if (this.serverOptions.enablePresenceExpirationEvents) {
+      this.redisManager.enableKeyspaceNotifications()
+        .catch(err => this.emit("error", new Error(`Failed to enable keyspace notifications: ${err}`)));
+    }
     this.commandManager = new CommandManager((err) => this.emit("error", err));
     this.channelManager = new ChannelManager(
       this.redisManager.redis,
