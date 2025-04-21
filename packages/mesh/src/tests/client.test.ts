@@ -43,7 +43,7 @@ describe("MeshClient", () => {
   });
 
   test("command times out when server doesn't respond", async () => {
-    server.registerCommand("never-responds", async () => new Promise(() => {}));
+    server.exposeCommand("never-responds", async () => new Promise(() => {}));
 
     await client.connect();
 
@@ -64,7 +64,7 @@ describe("MeshClient", () => {
   });
 
   test("thrown servers errors are serialized to the client", async () => {
-    server.registerCommand("throws-error", async () => {
+    server.exposeCommand("throws-error", async () => {
       throw new Error("This is a test error");
     });
 
@@ -79,7 +79,7 @@ describe("MeshClient", () => {
   });
 
   test("handles large payloads without issue", async () => {
-    server.registerCommand("echo", async (ctx) => ctx.payload);
+    server.exposeCommand("echo", async (ctx) => ctx.payload);
     await client.connect();
 
     const largeData = {

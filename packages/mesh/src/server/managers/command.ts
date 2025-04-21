@@ -25,7 +25,7 @@ export class CommandManager {
    * @param {SocketMiddleware[]} [middlewares=[]] - An optional array of middleware functions to apply to the command. Defaults to an empty array.
    * @throws {Error} May throw an error if the command registration or middleware addition fails.
    */
-  registerCommand<T = any, U = any>(
+  exposeCommand<T = any, U = any>(
     command: string,
     callback: (context: MeshContext<T>) => Promise<U> | U,
     middlewares: SocketMiddleware[] = []
@@ -33,7 +33,7 @@ export class CommandManager {
     this.commands[command] = callback;
 
     if (middlewares.length > 0) {
-      this.addMiddlewareToCommand(command, middlewares);
+      this.useMiddlewareWithCommand(command, middlewares);
     }
   }
 
@@ -45,7 +45,7 @@ export class CommandManager {
    * @returns {void}
    * @throws {Error} If the provided middlewares are not valid or fail validation (if applicable).
    */
-  addMiddleware(...middlewares: SocketMiddleware[]): void {
+  useMiddleware(...middlewares: SocketMiddleware[]): void {
     this.globalMiddlewares.push(...middlewares);
   }
 
@@ -56,7 +56,7 @@ export class CommandManager {
    * @param {SocketMiddleware[]} middlewares - An array of middleware functions to be added to the command.
    * @returns {void}
    */
-  addMiddlewareToCommand(
+  useMiddlewareWithCommand(
     command: string,
     middlewares: SocketMiddleware[]
   ): void {

@@ -58,7 +58,7 @@ const server = new MeshServer({
   redisOptions: { host: "localhost", port: 6379 },
 });
 
-server.registerCommand("echo", async (ctx) => {
+server.exposeCommand("echo", async (ctx) => {
   return `echo: ${ctx.payload}`;
 });
 ```
@@ -296,7 +296,7 @@ These can be used to implement custom commands or manage room state manually if 
 You can guard room joins using command middleware, just like any other command. The built-in room join command is "mesh/join-room", and the payload contains a `roomName` string:
 
 ```ts
-server.addMiddleware(async (ctx) => {
+server.useMiddleware(async (ctx) => {
   if (ctx.command === "mesh/join-room") {
     const { roomName } = ctx.payload;
     const meta = await server.connectionManager.getMetadata(ctx.connection);
@@ -444,7 +444,7 @@ You can associate data like user IDs, tokens, or custom attributes with a connec
 Metadata can be any JSON-serializable object, including nested structures. Updates fully replace the previous value—partial updates (patches) are not supported. While there is no hard size limit, large metadata objects may impact Redis performance.
 
 ```ts
-server.registerCommand("authenticate", async (ctx) => {
+server.exposeCommand("authenticate", async (ctx) => {
   // maybe do some actual authentication here
   const { userId } = ctx.payload;
   const token = encode({
@@ -711,11 +711,11 @@ Middleware can be applied globally to all commands or specifically to individual
 Applied to every command received by the server.
 
 ```ts
-server.addMiddleware(async (ctx) => {
+server.useMiddleware(async (ctx) => {
   console.log(`Received command: ${ctx.command} from ${ctx.connection.id}`);
 });
 
-server.addMiddleware(async (ctx) => {
+server.useMiddleware(async (ctx) => {
   const metadata = await server.connectionManager.getMetadata(ctx.connection);
   if (!metadata?.userId) {
     throw new Error("Unauthorized");
@@ -741,7 +741,7 @@ const validateProfileUpdate = async (ctx) => {
   }
 };
 
-server.registerCommand(
+server.exposeCommand(
   "update-profile",
   async (ctx) => {
     // ..

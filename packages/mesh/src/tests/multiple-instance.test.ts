@@ -56,7 +56,7 @@ describe.sequential("Multiple instances", () => {
   });
 
   test("broadcast should work across instances", async () => {
-    serverA.registerCommand("broadcast", async (ctx) => {
+    serverA.exposeCommand("broadcast", async (ctx) => {
       await serverA.broadcast("hello", "Hello!");
     });
 
@@ -97,13 +97,13 @@ describe.sequential("Multiple instances", () => {
 
   test("broadcastRoom should work across instances", async () => {
     [serverA, serverB].forEach((server) =>
-      server.registerCommand("join-room", async (ctx) => {
+      server.exposeCommand("join-room", async (ctx) => {
         await server.addToRoom(ctx.payload.room, ctx.connection);
         return { joined: true };
       })
     );
 
-    serverA.registerCommand("broadcast-room", async (ctx) => {
+    serverA.exposeCommand("broadcast-room", async (ctx) => {
       await serverA.broadcastRoom(
         ctx.payload.room,
         "room-message",

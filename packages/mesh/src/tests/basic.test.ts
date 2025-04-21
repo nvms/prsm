@@ -65,7 +65,7 @@ describe("MeshServer", () => {
   });
 
   test("clients can send a command and receive a response", async () => {
-    server.registerCommand("echo", async (c) => `echo: ${c.payload}`);
+    server.exposeCommand("echo", async (c) => `echo: ${c.payload}`);
     await clientA.connect();
     const response = await clientA.command("echo", "Hello, World!");
     expect(response).toBe("echo: Hello, World!");

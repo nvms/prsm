@@ -216,12 +216,12 @@ export class MeshServer extends WebSocketServer {
    * @param {SocketMiddleware[]} [middlewares=[]] - An optional array of middleware functions to apply to the command. Defaults to an empty array.
    * @throws {Error} May throw an error if the command registration or middleware addition fails.
    */
-  registerCommand<T = any, U = any>(
+  exposeCommand<T = any, U = any>(
     command: string,
     callback: (context: MeshContext<T>) => Promise<U> | U,
     middlewares: SocketMiddleware[] = []
   ) {
-    this.commandManager.registerCommand(command, callback, middlewares);
+    this.commandManager.exposeCommand(command, callback, middlewares);
   }
 
   /**
@@ -232,8 +232,8 @@ export class MeshServer extends WebSocketServer {
    * @returns {void}
    * @throws {Error} If the provided middlewares are not valid or fail validation (if applicable).
    */
-  addMiddleware(...middlewares: SocketMiddleware[]): void {
-    this.commandManager.addMiddleware(...middlewares);
+  useMiddleware(...middlewares: SocketMiddleware[]): void {
+    this.commandManager.useMiddleware(...middlewares);
   }
 
   /**
@@ -243,11 +243,11 @@ export class MeshServer extends WebSocketServer {
    * @param {SocketMiddleware[]} middlewares - An array of middleware functions to be added to the command.
    * @returns {void}
    */
-  addMiddlewareToCommand(
+  useMiddlewareWithCommand(
     command: string,
     middlewares: SocketMiddleware[]
   ): void {
-    this.commandManager.addMiddlewareToCommand(command, middlewares);
+    this.commandManager.useMiddlewareWithCommand(command, middlewares);
   }
 
   // #endregion
@@ -492,7 +492,7 @@ export class MeshServer extends WebSocketServer {
   // #region Command Registration
 
   private registerBuiltinCommands() {
-    this.registerCommand<
+    this.exposeCommand<
       { channel: string; historyLimit?: number },
       { success: boolean; history?: string[] }
     >("mesh/subscribe-channel", async (ctx) => {
@@ -527,7 +527,7 @@ export class MeshServer extends WebSocketServer {
       }
     });
 
-    this.registerCommand<{ channel: string }, boolean>(
+    this.exposeCommand<{ channel: string }, boolean>(
       "mesh/unsubscribe-channel",
       async (ctx) => {
         const { channel } = ctx.payload;
@@ -544,7 +544,7 @@ export class MeshServer extends WebSocketServer {
       }
     );
 
-    this.registerCommand<
+    this.exposeCommand<
       { roomName: string },
       { success: boolean; present: string[] }
     >("mesh/join-room", async (ctx) => {
@@ -556,7 +556,7 @@ export class MeshServer extends WebSocketServer {
       return { success: true, present };
     });
 
-    this.registerCommand<{ roomName: string }, { success: boolean }>(
+    this.exposeCommand<{ roomName: string }, { success: boolean }>(
       "mesh/leave-room",
       async (ctx) => {
         const { roomName } = ctx.payload;
@@ -567,7 +567,7 @@ export class MeshServer extends WebSocketServer {
   }
 
   private registerRecordCommands() {
-    this.registerCommand<
+    this.exposeCommand<
       { recordId: string; mode?: "patch" | "full" },
       { success: boolean; record?: any; version?: number }
     >("mesh/subscribe-record", async (ctx) => {
@@ -600,7 +600,7 @@ export class MeshServer extends WebSocketServer {
       }
     });
 
-    this.registerCommand<{ recordId: string }, boolean>(
+    this.exposeCommand<{ recordId: string }, boolean>(
       "mesh/unsubscribe-record",
       async (ctx) => {
         const { recordId } = ctx.payload;
@@ -612,7 +612,7 @@ export class MeshServer extends WebSocketServer {
       }
     );
 
-    this.registerCommand<
+    this.exposeCommand<
       { recordId: string; newValue: any },
       { success: boolean }
     >("mesh/publish-record-update", async (ctx) => {
@@ -639,7 +639,7 @@ export class MeshServer extends WebSocketServer {
       }
     });
 
-    this.registerCommand<
+    this.exposeCommand<
       { roomName: string },
       { success: boolean; present: string[] }
     >("mesh/subscribe-presence", async (ctx) => {
@@ -672,7 +672,7 @@ export class MeshServer extends WebSocketServer {
       }
     });
 
-    this.registerCommand<{ roomName: string }, boolean>(
+    this.exposeCommand<{ roomName: string }, boolean>(
       "mesh/unsubscribe-presence",
       async (ctx) => {
         const { roomName } = ctx.payload;
