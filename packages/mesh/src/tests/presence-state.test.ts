@@ -92,6 +92,8 @@ describe("Presence State", () => {
     // check that client1 got the state clear
     expect(callback).toHaveBeenCalledTimes(3);
     expect(updates[2].type).toBe("state");
+    expect(updates[2].roomName).toBeDefined();
+    expect(updates[2].timestamp).toBeDefined();
     expect(updates[2].state).toBeNull();
   });
 
