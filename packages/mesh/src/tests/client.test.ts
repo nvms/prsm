@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import Redis from "ioredis";
 import { MeshServer } from "../server";
 import { MeshClient, Status } from "../client";
@@ -158,7 +158,10 @@ describe("MeshClient", () => {
     });
 
     await server.ready();
-    const client = new MeshClient(`ws://localhost:8130`, { pingTimeout: 10, maxMissedPings: 10 });
+    const client = new MeshClient(`ws://localhost:8130`, {
+      pingTimeout: 10,
+      maxMissedPings: 10,
+    });
     await client.connect();
 
     return new Promise<void>((resolve) => {
@@ -170,5 +173,92 @@ describe("MeshClient", () => {
         expect(client.status).toBe(Status.OFFLINE);
       });
     });
+  });
+
+  test("client receives 'latency' messages", async () => {
+    const server = new MeshServer({
+      port: 8131,
+      pingInterval: 10,
+      latencyInterval: 10,
+      maxMissedPongs: 10,
+      redisOptions: { host: REDIS_HOST, port: REDIS_PORT },
+    });
+
+    await server.ready();
+    const client = new MeshClient(`ws://localhost:8131`, {
+      pingTimeout: 10,
+      maxMissedPings: 10,
+    });
+    await client.connect();
+
+    return new Promise<void>((resolve) => {
+      client.on("latency", (data) => {
+        expect(data).toBeDefined();
+        resolve();
+      });
+      client.on("close", () => {
+        expect(client.status).toBe(Status.OFFLINE);
+      });
+    });
+  });
+
+  test("client can get room metadata", async () => {
+    const roomName = "test-room";
+    const metadata = { key: "value", nested: { data: true } };
+
+    await client.connect();
+    await client.joinRoom(roomName);
+
+    await server.roomManager.setMetadata(roomName, metadata);
+
+    const retrievedMetadata = await client.getRoomMetadata(roomName);
+    expect(retrievedMetadata).toEqual(metadata);
+  });
+
+  test("client can get connection metadata", async () => {
+    await client.connect();
+    const clientConnection = server.connectionManager.getLocalConnections()[0]!;
+
+    const metadata = { user: "test-user", permissions: ["read", "write"] };
+    await server.connectionManager.setMetadata(clientConnection, metadata);
+
+    const retrievedMetadata = await client.getConnectionMetadata(
+      clientConnection.id
+    );
+    expect(retrievedMetadata).toEqual(metadata);
+  });
+
+  test("client can get their own connection metadata", async () => {
+    await client.connect();
+    const clientConnection = server.connectionManager.getLocalConnections()[0]!;
+    const metadata = { user: "test-user", permissions: ["read", "write"] };
+    await server.connectionManager.setMetadata(clientConnection, metadata);
+    const retrievedMetadata = await client.getConnectionMetadata();
+    expect(retrievedMetadata).toEqual(metadata);
+  });
+
+  test("helper methods register event listeners correctly", async () => {
+    const connectSpy = vi.fn();
+    const disconnectSpy = vi.fn();
+    const reconnectSpy = vi.fn();
+    const reconnectFailedSpy = vi.fn();
+
+    client
+      .onConnect(connectSpy)
+      .onDisconnect(disconnectSpy)
+      .onReconnect(reconnectSpy)
+      .onReconnectFailed(reconnectFailedSpy);
+
+    await client.connect();
+    expect(connectSpy).toHaveBeenCalled();
+
+    client.emit("disconnect");
+    expect(disconnectSpy).toHaveBeenCalled();
+
+    client.emit("reconnect");
+    expect(reconnectSpy).toHaveBeenCalled();
+
+    client.emit("reconnectfailed");
+    expect(reconnectFailedSpy).toHaveBeenCalled();
   });
 });
