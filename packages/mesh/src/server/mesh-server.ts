@@ -576,6 +576,58 @@ export class MeshServer extends WebSocketServer {
         return { success: true };
       }
     );
+
+    this.exposeCommand<{ connectionId: string }, { metadata: any }>(
+      "mesh/get-connection-metadata",
+      async (ctx) => {
+        const { connectionId } = ctx.payload;
+        // Try to get the local connection first
+        const connection =
+          this.connectionManager.getLocalConnection(connectionId);
+
+        if (connection) {
+          // If we have the connection locally, use it to get metadata
+          const metadata = await this.connectionManager.getMetadata(connection);
+          return { metadata };
+        } else {
+          // If the connection is not local, we need to get metadata directly from Redis
+          // This is a workaround since we don't have direct access to the connection
+          const metadata = await this.redisManager.redis.hget(
+            "mesh:connections",
+            connectionId
+          );
+          return { metadata: metadata ? JSON.parse(metadata) : null };
+        }
+      }
+    );
+
+    this.exposeCommand<{}, { metadata: any }>(
+      "mesh/get-my-connection-metadata",
+      async (ctx) => {
+        const connectionId = ctx.connection.id;
+        const connection =
+          this.connectionManager.getLocalConnection(connectionId);
+        if (connection) {
+          const metadata = await this.connectionManager.getMetadata(connection);
+          return { metadata };
+        } else {
+          const metadata = await this.redisManager.redis.hget(
+            "mesh:connections",
+            connectionId
+          );
+          return { metadata: metadata ? JSON.parse(metadata) : null };
+        }
+      }
+    );
+
+    this.exposeCommand<{ roomName: string }, { metadata: any }>(
+      "mesh/get-room-metadata",
+      async (ctx) => {
+        const { roomName } = ctx.payload;
+        const metadata = await this.roomManager.getMetadata(roomName);
+        return { metadata };
+      }
+    );
   }
 
   private registerRecordCommands() {
